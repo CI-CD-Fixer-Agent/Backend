@@ -6,15 +6,66 @@ import uuid
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 import json
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 class PostgreSQLCICDFixerDB:
     def __init__(self, database_url: str = None):
         if database_url is None:
             database_url = os.getenv('DATABASE_URL')
         
-        self.database_url = database_url
-        self.init_database()
+        if database_url:
+            # Fix the database URL for cloud deployment compatibility
+            self.database_url = self.fix_database_url(database_url)
+        else:
+            self.database_url = None
+            
+        # Graceful initialization with fallback
+        try:
+            if self.database_url:
+                self.init_database()
+            else:
+                print("⚠️  No DATABASE_URL provided, skipping database initialization")
+        except Exception as e:
+            print(f"⚠️  Database connection failed during startup: {e}")
+            print("🔄 App will continue without database (some features may be limited)")
+            self.database_url = None
+    
+    def fix_database_url(self, url: str) -> str:
+        """Fix common issues with cloud PostgreSQL URLs for Render deployment"""
+        try:
+            # Parse the URL
+            parsed = urlparse(url)
+            
+            # Reconstruct without problematic query parameters
+            fixed_url = f"postgresql://{parsed.username}:{parsed.password}@{parsed.hostname}:{parsed.port or 5432}{parsed.path}"
+            
+            # Add SSL requirement for cloud deployment
+            if 'sslmode' not in url.lower():
+                fixed_url += "?sslmode=require"
+            elif 'sslmode' in url.lower():
+                # Keep existing SSL mode
+                query_params = []
+                if parsed.query:
+                    for param in parsed.query.split('&'):
+                        if '=' in param:
+                            key, value = param.split('=', 1)
+                            if key.lower() == 'sslmode':
+                                query_params.append(f"sslmode={value}")
+                        else:
+                            # Handle malformed parameters
+                            continue
+                if query_params:
+                    fixed_url += "?" + "&".join(query_params)
+                else:
+                    fixed_url += "?sslmode=require"
+            
+            print(f"🔧 Fixed database URL format for cloud deployment")
+            return fixed_url
+            
+        except Exception as e:
+            print(f"⚠️  Error fixing database URL: {e}")
+            print(f"🔄 Using original URL: {url}")
+            return url
     
     def get_connection(self):
         """Get a database connection."""
@@ -32,21 +83,26 @@ class PostgreSQLCICDFixerDB:
     
     def init_database(self):
         """Initialize the PostgreSQL database with required tables."""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            # Create workflow_runs table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS workflow_runs (
-                    id SERIAL PRIMARY KEY,
-                    repo_name VARCHAR(255) NOT NULL,
-                    owner VARCHAR(255) NOT NULL,
-                    run_id BIGINT NOT NULL,
-                    workflow_name TEXT,
-                    status VARCHAR(50) NOT NULL,
-                    conclusion VARCHAR(50),
-                    error_log TEXT,
-                    suggested_fix TEXT,
+        try:
+            # Test connection first
+            if not self.test_connection():
+                raise Exception("Cannot connect to database")
+                
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Create workflow_runs table
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS workflow_runs (
+                        id SERIAL PRIMARY KEY,
+                        repo_name VARCHAR(255) NOT NULL,
+                        owner VARCHAR(255) NOT NULL,
+                        run_id BIGINT NOT NULL,
+                        workflow_name TEXT,
+                        status VARCHAR(50) NOT NULL,
+                        conclusion VARCHAR(50),
+                        error_log TEXT,
+                        suggested_fix TEXT,
                     fix_status VARCHAR(50) DEFAULT 'pending',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -86,54 +142,87 @@ class PostgreSQLCICDFixerDB:
             """)
             
             conn.commit()
+            print("✅ Database tables created successfully")
+            
+        except Exception as e:
+            print(f"❌ Database initialization failed: {e}")
+            raise
+
+    def is_available(self) -> bool:
+        """Check if database is available for operations"""
+        return self.database_url is not None and self.test_connection()
     
     def insert_workflow_run(self, run_data: Dict[str, Any]) -> int:
         """Insert a new workflow run record."""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
+        if not self.is_available():
+            print("⚠️  Database not available, skipping workflow run insertion")
+            return -1
             
-            cursor.execute("""
-                INSERT INTO workflow_runs 
-                (repo_name, owner, run_id, workflow_name, status, conclusion, error_log)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (repo_name, owner, run_id) 
-                DO UPDATE SET 
-                    workflow_name = EXCLUDED.workflow_name,
-                    status = EXCLUDED.status,
-                    conclusion = EXCLUDED.conclusion,
-                    error_log = EXCLUDED.error_log,
-                    updated_at = CURRENT_TIMESTAMP
-                RETURNING id
-            """, (
-                run_data.get('repo_name'),
-                run_data.get('owner'),
-                run_data.get('run_id'),
-                run_data.get('workflow_name'),
-                run_data.get('status'),
-                run_data.get('conclusion'),
-                run_data.get('error_log')
-            ))
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute("""
+                    INSERT INTO workflow_runs 
+                    (repo_name, owner, run_id, workflow_name, status, conclusion, error_log)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (repo_name, owner, run_id) 
+                    DO UPDATE SET 
+                        workflow_name = EXCLUDED.workflow_name,
+                        status = EXCLUDED.status,
+                        conclusion = EXCLUDED.conclusion,
+                        error_log = EXCLUDED.error_log,
+                        updated_at = CURRENT_TIMESTAMP
+                    RETURNING id
+                """, (
+                    run_data.get('repo_name'),
+                    run_data.get('owner'),
+                    run_data.get('run_id'),
+                    run_data.get('workflow_name'),
+                    run_data.get('status'),
+                    run_data.get('conclusion'),
+                    run_data.get('error_log')
+                ))
             
             result = cursor.fetchone()
             return result[0] if result else None
+            
+        except Exception as e:
+            print(f"⚠️  Error inserting workflow run: {e}")
+            return -1
     
     def update_workflow_run_fix(self, run_id: int, suggested_fix: str, fix_status: str = 'suggested'):
         """Update workflow run with suggested fix."""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
+        if not self.is_available():
+            print("⚠️  Database not available, skipping workflow run update")
+            return False
             
-            cursor.execute("""
-                UPDATE workflow_runs 
-                SET suggested_fix = %s, fix_status = %s, updated_at = CURRENT_TIMESTAMP
-                WHERE id = %s
-            """, (suggested_fix, fix_status, run_id))
-            
-            conn.commit()
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute("""
+                    UPDATE workflow_runs 
+                    SET suggested_fix = %s, fix_status = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                """, (suggested_fix, fix_status, run_id))
+                
+                conn.commit()
+                return True
+                
+        except Exception as e:
+            print(f"⚠️  Error updating workflow run: {e}")
+            return False
     
     def get_workflow_runs(self, limit: int = 50) -> List[Dict[str, Any]]:
         """Get all workflow runs with pagination."""
-        with self.get_connection() as conn:
-            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        if not self.is_available():
+            print("⚠️  Database not available, returning empty workflow runs list")
+            return []
+            
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             
             cursor.execute("""
                 SELECT * FROM workflow_runs 
@@ -142,6 +231,10 @@ class PostgreSQLCICDFixerDB:
             """, (limit,))
             
             return [dict(row) for row in cursor.fetchall()]
+            
+        except Exception as e:
+            print(f"⚠️  Error fetching workflow runs: {e}")
+            return []
     
     def get_workflow_run_by_id(self, run_id: int) -> Optional[Dict[str, Any]]:
         """Get a specific workflow run by ID."""
