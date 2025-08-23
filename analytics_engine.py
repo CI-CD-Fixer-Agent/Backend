@@ -306,13 +306,14 @@ class CICDPatternAnalyzer:
             with self.db.get_connection() as conn:
                 cursor = conn.cursor()
                 
-                # Overall fix statistics
+                # Overall fix statistics with better handling of fix_status values
                 cursor.execute("""
                     SELECT 
                         COUNT(*) as total_fixes,
-                        COUNT(CASE WHEN fix_status = 'approved' THEN 1 END) as approved_fixes,
-                        COUNT(CASE WHEN fix_status = 'rejected' THEN 1 END) as rejected_fixes,
-                        COUNT(CASE WHEN fix_status = 'pending' THEN 1 END) as pending_fixes
+                        COUNT(CASE WHEN fix_status IN ('approved', 'applied') THEN 1 END) as approved_fixes,
+                        COUNT(CASE WHEN fix_status IN ('rejected', 'declined') THEN 1 END) as rejected_fixes,
+                        COUNT(CASE WHEN fix_status IN ('pending', 'suggested') THEN 1 END) as pending_fixes,
+                        ARRAY_AGG(DISTINCT fix_status) as all_statuses
                     FROM workflow_runs 
                     WHERE suggested_fix IS NOT NULL
                 """)
@@ -322,10 +323,21 @@ class CICDPatternAnalyzer:
                 if not stats or stats[0] == 0:
                     return {
                         "message": "No fix data available yet",
-                        "total_fixes": 0
+                        "total_fixes": 0,
+                        "overall_stats": {
+                            "total_fixes": 0,
+                            "approved_fixes": 0,
+                            "rejected_fixes": 0,
+                            "pending_fixes": 0,
+                            "approval_rate": 0,
+                            "rejection_rate": 0
+                        }
                     }
                 
-                total, approved, rejected, pending = stats
+                total, approved, rejected, pending, all_statuses = stats
+                
+                # Log the actual statuses found for debugging
+                logger.info(f"Fix statuses found in database: {all_statuses}")
                 
                 # Fix effectiveness by error type
                 cursor.execute("""
@@ -345,7 +357,8 @@ class CICDPatternAnalyzer:
                         "rejected_fixes": rejected,
                         "pending_fixes": pending,
                         "approval_rate": approved / total if total > 0 else 0,
-                        "rejection_rate": rejected / total if total > 0 else 0
+                        "rejection_rate": rejected / total if total > 0 else 0,
+                        "all_statuses_found": all_statuses
                     },
                     "effectiveness_by_type": self._analyze_effectiveness_by_type(effectiveness_data),
                     "generated_at": datetime.utcnow().isoformat()
@@ -353,7 +366,17 @@ class CICDPatternAnalyzer:
                 
         except Exception as e:
             logger.error(f"Error getting fix effectiveness stats: {e}")
-            return {"error": str(e)}
+            return {
+                "error": str(e),
+                "overall_stats": {
+                    "total_fixes": 0,
+                    "approved_fixes": 0,
+                    "rejected_fixes": 0,
+                    "pending_fixes": 0,
+                    "approval_rate": 0,
+                    "rejection_rate": 0
+                }
+            }
     
     def _analyze_effectiveness_by_type(self, data: List[Tuple]) -> Dict[str, Any]:
         """Analyze fix effectiveness by error type."""

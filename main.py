@@ -257,6 +257,32 @@ async def root():
         }
     }
 
+@app.post("/")
+async def root_post(request: Request):
+    """Handle POST requests to root (likely misrouted GitHub webhooks)."""
+    # Log this for debugging
+    logger.info(f"POST request to root endpoint from {request.client.host if request.client else 'unknown'}")
+    
+    # Check if this looks like a GitHub webhook
+    user_agent = request.headers.get("user-agent", "")
+    content_type = request.headers.get("content-type", "")
+    
+    if "github" in user_agent.lower() or "hookshot" in user_agent.lower():
+        logger.info("Detected potential GitHub webhook sent to wrong endpoint - redirecting to /webhook")
+        # Redirect to the webhook endpoint
+        return JSONResponse(
+            status_code=307,  # Temporary redirect that preserves POST method
+            headers={"Location": "/webhook"},
+            content={"message": "GitHub webhook detected - please use /webhook endpoint"}
+        )
+    
+    return {
+        "message": "This is the CI/CD Fixer Agent API root endpoint",
+        "note": "For GitHub webhooks, please use the /webhook endpoint",
+        "webhook_url": "/webhook",
+        "api_docs": "/docs"
+    }
+
 @app.get(
     "/health",
     response_model=HealthResponse,
@@ -351,44 +377,73 @@ async def handle_webhook(request: Request):
             if not hmac.compare_digest(signature, expected_signature):
                 raise HTTPException(status_code=403, detail="Invalid webhook signature")
         
-        # Parse payload
-        payload = json.loads(body)
+        # Parse payload with error handling
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON in webhook payload: {e}")
+            raise HTTPException(status_code=400, detail="Invalid JSON payload")
+        
+        # Validate required fields exist
+        if "action" not in payload:
+            logger.warning("Missing 'action' field in webhook payload")
+            return {"message": "Webhook received but missing required fields"}
+        
+        if "workflow_run" not in payload:
+            logger.warning("Missing 'workflow_run' field in webhook payload")
+            return {"message": "Webhook received but missing workflow_run data"}
+        
+        if "repository" not in payload:
+            logger.warning("Missing 'repository' field in webhook payload")
+            return {"message": "Webhook received but missing repository data"}
         
         # Only process failed workflow runs
         if (payload.get("action") == "completed" and 
             payload.get("workflow_run", {}).get("conclusion") == "failure"):
             
-            repository = payload["repository"]
-            workflow_run = payload["workflow_run"]
-            
-            owner = repository["owner"]["login"]
-            repo = repository["name"]
-            run_id = workflow_run["id"]
-            
-            logger.info(f"🔥 Detected failed workflow: {owner}/{repo} run #{run_id}")
-            
-            # Store failure in database
-            failure_data = {
-                "owner": owner,
-                "repo": repo,
-                "run_id": run_id,
-                "workflow_name": workflow_run.get("name", "Unknown"),
-                "conclusion": workflow_run["conclusion"],
-                "html_url": workflow_run["html_url"],
-                "created_at": workflow_run["created_at"],
-                "updated_at": workflow_run["updated_at"]
-            }
-            
-            failure_id = db.store_failure(failure_data)
-            logger.info(f"📝 Stored failure with ID: {failure_id}")
-            
-            # Trigger analysis asynchronously
-            asyncio.create_task(analyze_failure_async(owner, repo, run_id, failure_id))
-            
-            return {"message": "Webhook processed successfully", "failure_id": failure_id}
+            try:
+                repository = payload["repository"]
+                workflow_run = payload["workflow_run"]
+                
+                # Extract required data with fallbacks
+                owner = repository.get("owner", {}).get("login")
+                repo = repository.get("name")
+                run_id = workflow_run.get("id")
+                
+                if not all([owner, repo, run_id]):
+                    logger.error(f"Missing required data: owner={owner}, repo={repo}, run_id={run_id}")
+                    return {"message": "Webhook received but missing required repository/workflow data"}
+                
+                logger.info(f"🔥 Detected failed workflow: {owner}/{repo} run #{run_id}")
+                
+                # Store failure in database with safe field access
+                failure_data = {
+                    "owner": owner,
+                    "repo": repo,
+                    "run_id": run_id,
+                    "workflow_name": workflow_run.get("name", "Unknown"),
+                    "conclusion": workflow_run.get("conclusion", "failure"),
+                    "html_url": workflow_run.get("html_url", f"https://github.com/{owner}/{repo}/actions/runs/{run_id}"),
+                    "created_at": workflow_run.get("created_at", datetime.utcnow().isoformat()),
+                    "updated_at": workflow_run.get("updated_at", datetime.utcnow().isoformat())
+                }
+                
+                failure_id = db.store_failure(failure_data)
+                logger.info(f"📝 Stored failure with ID: {failure_id}")
+                
+                # Trigger analysis asynchronously
+                asyncio.create_task(analyze_failure_async(owner, repo, run_id, failure_id))
+                
+                return {"message": "Webhook processed successfully", "failure_id": failure_id}
+                
+            except Exception as e:
+                logger.error(f"Error processing workflow data: {e}")
+                return {"message": "Webhook received but failed to process workflow data", "error": str(e)}
         
         return {"message": "Webhook received but no action taken"}
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Webhook processing failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -49,6 +49,69 @@ class GeminiFixerAgent:
             print(f"Error calling Gemini API: {e}")
             return self._analyze_with_fallback(error_logs, repo_context)
     
+    async def analyze_failure(self, owner: str, repo: str, run_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Analyze a specific workflow failure using GitHub API and Gemini AI.
+        
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            run_id: Workflow run ID
+            
+        Returns:
+            Analysis result dictionary or None if failed
+        """
+        try:
+            from github_service import GitHubService
+            
+            # Initialize GitHub service if needed
+            github_service = GitHubService()
+            
+            # Fetch workflow run data
+            workflow_data = github_service.get_workflow_run(owner, repo, run_id)
+            if not workflow_data:
+                print(f"❌ Could not fetch workflow run data for {owner}/{repo}#{run_id}")
+                return None
+            
+            # Fetch workflow logs
+            logs = github_service.get_workflow_logs(owner, repo, run_id)
+            if not logs:
+                print(f"❌ Could not fetch workflow logs for {owner}/{repo}#{run_id}")
+                return None
+            
+            # Prepare repository context
+            repo_context = {
+                "owner": owner,
+                "repo": repo,
+                "run_id": run_id,
+                "workflow_name": workflow_data.get("name", "Unknown"),
+                "conclusion": workflow_data.get("conclusion", "failure"),
+                "event": workflow_data.get("event", "unknown"),
+                "created_at": workflow_data.get("created_at"),
+                "head_branch": workflow_data.get("head_branch"),
+                "head_sha": workflow_data.get("head_sha", "")[:8]
+            }
+            
+            # Analyze using Gemini
+            print(f"🤖 Analyzing failure with Gemini AI for {owner}/{repo}#{run_id}")
+            analysis_result = self.analyze_failure_and_suggest_fix(logs, repo_context)
+            
+            # Add metadata to result
+            analysis_result.update({
+                "owner": owner,
+                "repo": repo,
+                "run_id": run_id,
+                "analyzed_at": __import__('datetime').datetime.utcnow().isoformat(),
+                "workflow_data": workflow_data
+            })
+            
+            print(f"✅ Analysis completed for {owner}/{repo}#{run_id}")
+            return analysis_result
+            
+        except Exception as e:
+            print(f"❌ Analysis failed for {owner}/{repo}#{run_id}: {e}")
+            return None
+    
     def _build_analysis_prompt(self, error_logs: str, repo_context: Dict[str, Any]) -> str:
         """Build a comprehensive prompt for Gemini analysis with enhanced context."""
         
