@@ -1,17 +1,17 @@
 import os
-import google.generativeai as genai
+from google import genai
+from google.genai import types
+from google.genai import types
 from typing import Dict, Any, Optional
 import json
 
 class GeminiFixerAgent:
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
-        
+        self.api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
         if self.api_key:
-            genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel('gemini-2.5-pro')
+            self.client = genai.Client(api_key=self.api_key)
         else:
-            self.model = None
+            self.client = None
             print("Warning: No Gemini API key provided. Using fallback analysis.")
     
     def analyze_failure_and_suggest_fix(self, error_logs: str, repo_context: Dict[str, Any]) -> Dict[str, Any]:
@@ -26,22 +26,25 @@ class GeminiFixerAgent:
             Dictionary containing analysis and suggested fix
         """
         
-        if self.model:
+        if self.client:
             return self._analyze_with_gemini(error_logs, repo_context)
         else:
             return self._analyze_with_fallback(error_logs, repo_context)
     
     def _analyze_with_gemini(self, error_logs: str, repo_context: Dict[str, Any]) -> Dict[str, Any]:
-        """Use Gemini AI to analyze the failure and suggest fixes."""
-        
+        """Use Gemini AI to analyze the failure and suggest fixes (google-genai SDK)."""
         prompt = self._build_analysis_prompt(error_logs, repo_context)
-        
         try:
-            response = self.model.generate_content(prompt)
-            
-            # Parse the response to extract structured information
+            response = self.client.models.generate_content(
+                model="gemini-2.5-pro",
+                contents=types.Part.from_text(prompt),
+                config=types.GenerateContentConfig(
+                    temperature=0.2,
+                    candidate_count=1,
+                    max_output_tokens=2048
+                )
+            )
             return self._parse_gemini_response(response.text)
-            
         except Exception as e:
             print(f"Error calling Gemini API: {e}")
             return self._analyze_with_fallback(error_logs, repo_context)
