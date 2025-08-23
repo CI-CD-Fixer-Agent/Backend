@@ -329,7 +329,13 @@ class CICDPatternAnalyzer:
                     WHERE suggested_fix IS NOT NULL OR fix_status IS NOT NULL
                 """)
                 
-                stats = cursor.fetchone()
+                result = cursor.fetchone()
+                
+                # Handle case where query returns None or empty result
+                if not result:
+                    stats = (0, 0, 0, 0)
+                else:
+                    stats = result
                 
                 if not stats or stats[0] == 0:
                     return {
@@ -400,7 +406,17 @@ class CICDPatternAnalyzer:
             error_types = self._classify_error_types(error_log)
             primary_type = error_types[0] if error_types else "unknown"
             
-            type_stats[primary_type][status] += count
+            # Map actual database status values to our categories
+            if status in ('approved', 'accepted', 'applied', 'approved_no_action'):
+                category = "approved"
+            elif status in ('rejected', 'declined', 'denied'):
+                category = "rejected"
+            elif status in ('pending', 'suggested', 'waiting'):
+                category = "pending"
+            else:
+                category = "pending"  # Default to pending for unknown statuses
+                
+            type_stats[primary_type][category] += count
         
         # Calculate rates
         effectiveness = {}

@@ -172,6 +172,45 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Utility functions
+def format_suggested_fix(fix_dict: Dict[str, Any]) -> str:
+    """Format a suggested fix dictionary into a readable string."""
+    if not isinstance(fix_dict, dict):
+        return str(fix_dict)
+    
+    formatted = ""
+    
+    # Add description
+    if "description" in fix_dict:
+        formatted += f"**Description:** {fix_dict['description']}\n\n"
+    
+    # Add steps
+    if "steps" in fix_dict and isinstance(fix_dict["steps"], list):
+        formatted += "**Steps:**\n"
+        for i, step in enumerate(fix_dict["steps"], 1):
+            formatted += f"{i}. {step}\n"
+        formatted += "\n"
+    
+    # Add files to modify
+    if "files_to_modify" in fix_dict and isinstance(fix_dict["files_to_modify"], list) and fix_dict["files_to_modify"]:
+        formatted += "**Files to modify:**\n"
+        for file in fix_dict["files_to_modify"]:
+            formatted += f"- {file}\n"
+        formatted += "\n"
+    
+    # Add commands to run
+    if "commands_to_run" in fix_dict and isinstance(fix_dict["commands_to_run"], list) and fix_dict["commands_to_run"]:
+        formatted += "**Commands to run:**\n"
+        for cmd in fix_dict["commands_to_run"]:
+            formatted += f"- `{cmd}`\n"
+        formatted += "\n"
+    
+    # If no formatting was applied, return string representation
+    if not formatted:
+        formatted = str(fix_dict)
+    
+    return formatted.strip()
+
 # Initialize services
 try:
     db = PostgreSQLCICDFixerDB()
@@ -454,43 +493,58 @@ async def analyze_failure_async(owner: str, repo: str, run_id: int, failure_id: 
         logger.info(f"🔍 Starting analysis for {owner}/{repo} run #{run_id}")
         
         # Perform analysis using Gemini
-        analysis_result = await gemini_agent.analyze_failure(owner, repo, run_id)
+        try:
+            analysis_result = await gemini_agent.analyze_failure(owner, repo, run_id)
+            logger.info(f"🤖 Analysis completed for {owner}/{repo}#{run_id}")
+        except Exception as e:
+            logger.error(f"❌ Gemini analysis failed for {owner}/{repo}#{run_id}: {e}")
+            analysis_result = None
         
         if analysis_result:
-            # Store analysis results
-            db.store_analysis(failure_id, analysis_result)
-            
-            # Check if a fix was suggested and store it properly
-            suggested_fix = analysis_result.get("suggested_fix")
-            if suggested_fix:
-                logger.info(f"💡 Fix suggested for {owner}/{repo}#{run_id}: {suggested_fix[:100]}...")
+            try:
+                # Store analysis results
+                db.store_analysis(failure_id, analysis_result)
+                logger.info(f"💾 Analysis result stored for failure {failure_id}")
                 
-                # Update the workflow run with the suggested fix
-                db.update_workflow_run_fix(
-                    run_id=int(failure_id),  # Using failure_id as the database ID
-                    suggested_fix=suggested_fix,
-                    fix_status='pending'  # Set to pending to require human approval
-                )
-                
-                # Store additional fix metadata if available
-                fix_metadata = {
-                    "confidence_score": analysis_result.get("confidence_score", 0.7),
-                    "error_category": analysis_result.get("error_category", "unknown"),
-                    "fix_complexity": analysis_result.get("fix_complexity", "medium"),
-                    "requires_approval": True,
-                    "generated_at": analysis_result.get("analyzed_at")
-                }
-                
-                db.store_fix_metadata(failure_id, fix_metadata)
-                
-                logger.info(f"✅ Analysis and fix suggestion completed for failure {failure_id}")
-            else:
-                logger.info(f"✅ Analysis completed but no fix suggested for failure {failure_id}")
+                # Check if a fix was suggested and store it properly
+                suggested_fix = analysis_result.get("suggested_fix")
+                if suggested_fix:
+                    # Convert suggested_fix to string if it's a dictionary
+                    if isinstance(suggested_fix, dict):
+                        fix_description = suggested_fix.get("description", str(suggested_fix))
+                        logger.info(f"💡 Fix suggested for {owner}/{repo}#{run_id}: {fix_description[:100]}...")
+                        # Convert the entire fix object to a formatted string
+                        fix_string = format_suggested_fix(suggested_fix)
+                    else:
+                        fix_string = str(suggested_fix)
+                        logger.info(f"💡 Fix suggested for {owner}/{repo}#{run_id}: {fix_string[:100]}...")
+                    
+                    # Update the workflow run with the suggested fix
+                    db.update_workflow_run_fix(
+                        run_id=int(failure_id),  # failure_id is the database record ID
+                        suggested_fix=fix_string,
+                        fix_status='pending'  # Set to pending to require human approval
+                    )
+                    logger.info(f"✅ Fix stored for failure {failure_id}")
+                else:
+                    logger.info(f"ℹ️ No specific fix suggested for {owner}/{repo}#{run_id}")
+            except Exception as e:
+                logger.error(f"❌ Error storing analysis results for failure {failure_id}: {e}")
         else:
-            logger.error(f"❌ Analysis failed for failure {failure_id}")
+            logger.warning(f"⚠️ No analysis result generated for {owner}/{repo}#{run_id}")
             
     except Exception as e:
         logger.error(f"❌ Analysis error for {owner}/{repo} run #{run_id}: {e}")
+        # Store error information
+        try:
+            error_result = {
+                "error": str(e),
+                "error_type": "analysis_failure",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            db.store_analysis(failure_id, error_result)
+        except Exception as store_error:
+            logger.error(f"❌ Failed to store error for failure {failure_id}: {store_error}")
 
 @app.post(
     "/analyze",
@@ -610,6 +664,81 @@ async def get_pending_fixes():
         return {"pending_fixes": fixes}
     except Exception as e:
         logger.error(f"Failed to get pending fixes: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/failures")
+async def get_failures():
+    """Get all workflow failures."""
+    try:
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, repo_name, owner, workflow_name, run_id, status, 
+                       conclusion, error_log, suggested_fix, fix_status, created_at
+                FROM workflow_runs 
+                ORDER BY created_at DESC 
+                LIMIT 100
+            """)
+            
+            failures = []
+            for row in cursor.fetchall():
+                failures.append({
+                    "id": row[0],
+                    "repo_name": row[1],
+                    "owner": row[2],
+                    "workflow_name": row[3],
+                    "run_id": row[4],
+                    "status": row[5],
+                    "conclusion": row[6],
+                    "error_log": row[7],
+                    "suggested_fix": row[8],
+                    "fix_status": row[9],
+                    "created_at": row[10].isoformat() if row[10] else None
+                })
+            
+            return {"failures": failures, "count": len(failures)}
+            
+    except Exception as e:
+        logger.error(f"Failed to get failures: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/failures/{failure_id}")
+async def get_failure_detail(failure_id: int):
+    """Get detailed information about a specific failure."""
+    try:
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, repo_name, owner, workflow_name, run_id, status, 
+                       conclusion, error_log, suggested_fix, fix_status, created_at
+                FROM workflow_runs 
+                WHERE id = %s
+            """, (failure_id,))
+            
+            row = cursor.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Failure not found")
+            
+            failure = {
+                "id": row[0],
+                "repo_name": row[1],
+                "owner": row[2],
+                "workflow_name": row[3],
+                "run_id": row[4],
+                "status": row[5],
+                "conclusion": row[6],
+                "error_log": row[7],
+                "suggested_fix": row[8],
+                "fix_status": row[9],
+                "created_at": row[10].isoformat() if row[10] else None
+            }
+            
+            return {"failure": failure}
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get failure {failure_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/fixes/{fix_id}/approve")

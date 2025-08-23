@@ -119,7 +119,8 @@ class PostgreSQLCICDFixerDB:
                         ALTER TABLE workflow_runs 
                         ADD COLUMN IF NOT EXISTS confidence_score FLOAT,
                         ADD COLUMN IF NOT EXISTS error_category VARCHAR(100),
-                        ADD COLUMN IF NOT EXISTS fix_complexity VARCHAR(50)
+                        ADD COLUMN IF NOT EXISTS fix_complexity VARCHAR(50),
+                        ADD COLUMN IF NOT EXISTS analysis_result TEXT
                     """)
                 except Exception as e:
                     # Column might already exist, ignore the error

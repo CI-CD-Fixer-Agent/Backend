@@ -44,6 +44,10 @@ class GitHubService:
             # Return sample logs for demo purposes
             return self._get_sample_logs()
     
+    def get_workflow_logs(self, owner: str, repo: str, run_id: int) -> Optional[str]:
+        """Alias for get_workflow_run_logs to maintain compatibility."""
+        return self.get_workflow_run_logs(owner, repo, run_id)
+    
     def get_workflow_jobs(self, owner: str, repo: str, run_id: int) -> Optional[List[Dict[str, Any]]]:
         """Get jobs for a workflow run."""
         url = f"{self.base_url}/repos/{owner}/{repo}/actions/runs/{run_id}/jobs"

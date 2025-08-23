@@ -35,9 +35,10 @@ class GeminiFixerAgent:
         """Use Gemini AI to analyze the failure and suggest fixes (google-genai SDK)."""
         prompt = self._build_analysis_prompt(error_logs, repo_context)
         try:
+            # Try the new API format first
             response = self.client.models.generate_content(
                 model="gemini-2.5-pro",
-                contents=types.Part.from_text(prompt),
+                contents=[{"parts": [{"text": prompt}]}],
                 config=types.GenerateContentConfig(
                     temperature=0.2,
                     candidate_count=1,
@@ -46,8 +47,38 @@ class GeminiFixerAgent:
             )
             return self._parse_gemini_response(response.text)
         except Exception as e:
-            print(f"Error calling Gemini API: {e}")
-            return self._analyze_with_fallback(error_logs, repo_context)
+            print(f"Error calling Gemini API (new format): {e}")
+            # Try alternative format
+            try:
+                response = self.client.models.generate_content(
+                    model="gemini-2.5-pro",
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.2,
+                        candidate_count=1,
+                        max_output_tokens=2048
+                    )
+                )
+                
+                # Extract text from response properly
+                response_text = ""
+                if hasattr(response, 'text') and response.text:
+                    response_text = response.text
+                elif hasattr(response, 'candidates') and response.candidates:
+                    for candidate in response.candidates:
+                        if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                            for part in candidate.content.parts:
+                                if hasattr(part, 'text'):
+                                    response_text += part.text
+                
+                if not response_text:
+                    print("No response text found from Gemini API")
+                    return self._analyze_with_fallback(error_logs, repo_context)
+                
+                return self._parse_gemini_response(response_text)
+            except Exception as e2:
+                print(f"Error calling Gemini API (alternative format): {e2}")
+                return self._analyze_with_fallback(error_logs, repo_context)
     
     async def analyze_failure(self, owner: str, repo: str, run_id: int) -> Optional[Dict[str, Any]]:
         """
@@ -71,13 +102,22 @@ class GeminiFixerAgent:
             workflow_data = github_service.get_workflow_run(owner, repo, run_id)
             if not workflow_data:
                 print(f"❌ Could not fetch workflow run data for {owner}/{repo}#{run_id}")
-                return None
+                # Create fallback workflow data for analysis
+                workflow_data = {
+                    "id": run_id,
+                    "name": "Unknown Workflow",
+                    "status": "completed",
+                    "conclusion": "failure",
+                    "html_url": f"https://github.com/{owner}/{repo}/actions/runs/{run_id}",
+                    "repository": {"full_name": f"{owner}/{repo}"}
+                }
             
-            # Fetch workflow logs
+            # Fetch workflow logs (this has fallback sample logs)
             logs = github_service.get_workflow_logs(owner, repo, run_id)
             if not logs:
                 print(f"❌ Could not fetch workflow logs for {owner}/{repo}#{run_id}")
-                return None
+                # Use a generic error log for analysis
+                logs = "Build failed with unknown error. No detailed logs available."
             
             # Prepare repository context
             repo_context = {
