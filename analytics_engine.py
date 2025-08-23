@@ -306,16 +306,27 @@ class CICDPatternAnalyzer:
             with self.db.get_connection() as conn:
                 cursor = conn.cursor()
                 
-                # Overall fix statistics with better handling of fix_status values
+                # First, check what fix_status values actually exist
+                cursor.execute("""
+                    SELECT DISTINCT fix_status, COUNT(*) 
+                    FROM workflow_runs 
+                    WHERE fix_status IS NOT NULL
+                    GROUP BY fix_status
+                    ORDER BY COUNT(*) DESC
+                """)
+                
+                status_counts = cursor.fetchall()
+                logger.info(f"Fix statuses found in database: {[row[0] for row in status_counts]}")
+                
+                # Overall fix statistics with corrected status mapping
                 cursor.execute("""
                     SELECT 
                         COUNT(*) as total_fixes,
-                        COUNT(CASE WHEN fix_status IN ('approved', 'applied') THEN 1 END) as approved_fixes,
-                        COUNT(CASE WHEN fix_status IN ('rejected', 'declined') THEN 1 END) as rejected_fixes,
-                        COUNT(CASE WHEN fix_status IN ('pending', 'suggested') THEN 1 END) as pending_fixes,
-                        ARRAY_AGG(DISTINCT fix_status) as all_statuses
+                        COUNT(CASE WHEN fix_status IN ('approved', 'accepted', 'applied') THEN 1 END) as approved_fixes,
+                        COUNT(CASE WHEN fix_status IN ('rejected', 'declined', 'denied') THEN 1 END) as rejected_fixes,
+                        COUNT(CASE WHEN fix_status IN ('pending', 'suggested', 'waiting') THEN 1 END) as pending_fixes
                     FROM workflow_runs 
-                    WHERE suggested_fix IS NOT NULL
+                    WHERE suggested_fix IS NOT NULL OR fix_status IS NOT NULL
                 """)
                 
                 stats = cursor.fetchone()
@@ -331,24 +342,25 @@ class CICDPatternAnalyzer:
                             "pending_fixes": 0,
                             "approval_rate": 0,
                             "rejection_rate": 0
-                        }
+                        },
+                        "status_distribution": {}
                     }
                 
-                total, approved, rejected, pending, all_statuses = stats
+                total, approved, rejected, pending = stats
                 
-                # Log the actual statuses found for debugging
-                logger.info(f"Fix statuses found in database: {all_statuses}")
-                
-                # Fix effectiveness by error type
+                # Fix effectiveness by error type (if we have error data)
                 cursor.execute("""
                     SELECT error_log, fix_status, COUNT(*)
                     FROM workflow_runs 
-                    WHERE suggested_fix IS NOT NULL 
+                    WHERE (suggested_fix IS NOT NULL OR fix_status IS NOT NULL)
                     AND error_log IS NOT NULL
                     GROUP BY error_log, fix_status
                 """)
                 
                 effectiveness_data = cursor.fetchall()
+                
+                # Status distribution
+                status_distribution = {status: count for status, count in status_counts}
                 
                 return {
                     "overall_stats": {
@@ -356,10 +368,11 @@ class CICDPatternAnalyzer:
                         "approved_fixes": approved,
                         "rejected_fixes": rejected,
                         "pending_fixes": pending,
-                        "approval_rate": approved / total if total > 0 else 0,
-                        "rejection_rate": rejected / total if total > 0 else 0,
-                        "all_statuses_found": all_statuses
+                        "approval_rate": round(approved / total * 100, 2) if total > 0 else 0,
+                        "rejection_rate": round(rejected / total * 100, 2) if total > 0 else 0,
+                        "pending_rate": round(pending / total * 100, 2) if total > 0 else 0
                     },
+                    "status_distribution": status_distribution,
                     "effectiveness_by_type": self._analyze_effectiveness_by_type(effectiveness_data),
                     "generated_at": datetime.utcnow().isoformat()
                 }

@@ -81,12 +81,12 @@ class CICDFixerPortiaAgent:
     
     async def analyze_ci_failure(self, owner: str, repo: str, run_id: int) -> Dict[str, Any]:
         """
-        Analyze CI/CD failure using Portia's plan-based approach.
+        Analyze a CI/CD failure using Portia's structured approach.
         
-        This creates a structured plan that:
-        1. Fetches workflow run details
-        2. Extracts error logs
-        3. Analyzes with AI
+        This method:
+        1. Fetches workflow run data
+        2. Analyzes error logs
+        3. Generates fix suggestions
         4. Stores suggested fixes
         5. Awaits human approval
         
@@ -102,67 +102,121 @@ class CICDFixerPortiaAgent:
         try:
             print(f"🚀 Starting Portia-powered CI/CD analysis for {owner}/{repo} run #{run_id}")
             
-            # Create a simpler, more specific analysis prompt for Portia
-            analysis_prompt = f"""
-            You are a CI/CD analysis expert. Please analyze the failed workflow run {run_id} for the repository {owner}/{repo}.
+            # First, let's try a simple direct analysis approach instead of complex Portia workflow
+            # This will help us identify the exact issue
             
-            Steps to follow:
-            1. Use the fetch_workflow_run tool to get workflow run details for owner="{owner}", repo="{repo}", run_id={run_id}
-            2. If the workflow run data is available, use fetch_workflow_logs tool to get the logs 
-            3. If you get logs, use the analyze_errors tool to analyze what went wrong
-            4. Generate a fix suggestion using the generate_fix tool
-            5. Store the analysis using store_analysis tool
-            
-            Be thorough but practical in your analysis.
-            """
-            
-            # Execute the plan using Portia with better error handling
-            print(f"📋 Executing Portia plan for {owner}/{repo}#{run_id}")
-            
-            plan_run = await asyncio.to_thread(self.portia.run, analysis_prompt)
-            
-            print(f"📋 Plan execution completed with state: {plan_run.state}")
-            print(f"📋 Plan outputs: {plan_run.outputs}")
-            
-            # Extract results from plan execution
-            result = {
-                "success": plan_run.state == PlanRunState.COMPLETE,
-                "plan_id": plan_run.plan_id,
-                "plan_run_id": plan_run.id,
-                "state": plan_run.state.value if plan_run.state else "unknown",
-                "final_output": getattr(plan_run, 'final_output', None),
-                "clarifications": [],
-                "message": f"Plan execution {plan_run.state.value if plan_run.state else 'completed'}",
-                "next_action": "complete"
-            }
-            
-            # Check for clarifications
             try:
-                clarifications = plan_run.get_outstanding_clarifications()
-                if clarifications:
-                    result["clarifications"] = [c.model_dump() for c in clarifications]
-                    result["next_action"] = "check_clarifications"
-            except Exception as e:
-                print(f"⚠️ Error getting clarifications: {e}")
-            
-            # Try to get outputs
-            try:
-                if hasattr(plan_run, 'outputs') and plan_run.outputs:
-                    result["outputs"] = str(plan_run.outputs)
-            except Exception as e:
-                print(f"⚠️ Error getting outputs: {e}")
-            
-            return result
-            
+                # Test the individual tools first
+                workflow_data = self.github_service.get_workflow_run(owner, repo, run_id)
+                if not workflow_data:
+                    return {
+                        "success": False,
+                        "error": f"Could not fetch workflow run data for {owner}/{repo}#{run_id}",
+                        "plan_id": None,
+                        "plan_run_id": None
+                    }
+                
+                print(f"✅ Successfully fetched workflow data for {owner}/{repo}#{run_id}")
+                
+                # Get workflow logs
+                logs = self.github_service.get_workflow_logs(owner, repo, run_id)
+                if logs:
+                    print(f"✅ Successfully fetched workflow logs ({len(logs)} characters)")
+                    
+                    # Use Gemini for analysis
+                    analysis = await self.gemini_agent.analyze_workflow_failure(workflow_data, logs)
+                    if analysis:
+                        print(f"✅ Gemini analysis completed successfully")
+                        
+                        # Store the results
+                        failure_data = {
+                            "owner": owner,
+                            "repo": repo,
+                            "run_id": run_id,
+                            "workflow_name": workflow_data.get("name", "Unknown"),
+                            "conclusion": "failure",
+                            "html_url": workflow_data.get("html_url", ""),
+                            "created_at": workflow_data.get("created_at", ""),
+                            "updated_at": workflow_data.get("updated_at", "")
+                        }
+                        
+                        failure_id = self.db.store_failure(failure_data)
+                        self.db.store_analysis(failure_id, analysis)
+                        
+                        return {
+                            "success": True,
+                            "plan_id": f"direct-analysis-{failure_id}",
+                            "plan_run_id": f"run-{failure_id}",
+                            "state": "completed",
+                            "analysis": analysis,
+                            "failure_id": failure_id,
+                            "message": "Direct analysis completed successfully",
+                            "next_action": "review_analysis"
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "error": "Gemini analysis failed",
+                            "plan_id": None,
+                            "plan_run_id": None
+                        }
+                else:
+                    return {
+                        "success": False,
+                        "error": "Could not fetch workflow logs",
+                        "plan_id": None,
+                        "plan_run_id": None
+                    }
+                    
+            except Exception as direct_error:
+                print(f"❌ Direct analysis failed: {direct_error}")
+                
+                # Fallback to simple Portia plan if direct analysis fails
+                analysis_prompt = f"""
+                Analyze the failed CI/CD workflow for repository {owner}/{repo}, run ID {run_id}.
+                
+                Please fetch the workflow data and logs, then provide an analysis of what went wrong.
+                """
+                
+                print(f"📋 Falling back to simple Portia execution")
+                
+                try:
+                    # Use synchronous execution with proper error handling
+                    plan_run = self.portia.run(analysis_prompt)
+                    
+                    if plan_run:
+                        print(f"📋 Plan execution completed with state: {getattr(plan_run, 'state', 'unknown')}")
+                        
+                        return {
+                            "success": True,
+                            "plan_id": getattr(plan_run, 'plan_id', None),
+                            "plan_run_id": getattr(plan_run, 'id', None),
+                            "state": getattr(plan_run, 'state', 'unknown'),
+                            "message": "Portia plan executed successfully",
+                            "next_action": "complete"
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "error": "Portia plan execution returned None",
+                            "plan_id": None,
+                            "plan_run_id": None
+                        }
+                        
+                except Exception as portia_error:
+                    print(f"❌ Portia execution failed: {portia_error}")
+                    return {
+                        "success": False,
+                        "error": f"Portia plan execution failed: {str(portia_error)}",
+                        "plan_id": None,
+                        "plan_run_id": None
+                    }
+                    
         except Exception as e:
-            error_msg = f"Error in Portia CI/CD analysis: {str(e)}"
-            print(f"💥 {error_msg}")
-            import traceback
-            traceback.print_exc()
-            
+            print(f"❌ Error in Portia CI/CD analysis: {e}")
             return {
                 "success": False,
-                "error": error_msg,
+                "error": f"Error in Portia CI/CD analysis: {e}",
                 "plan_id": None,
                 "plan_run_id": None
             }

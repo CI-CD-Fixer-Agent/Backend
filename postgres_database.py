@@ -103,12 +103,27 @@ class PostgreSQLCICDFixerDB:
                         conclusion VARCHAR(50),
                         error_log TEXT,
                         suggested_fix TEXT,
-                    fix_status VARCHAR(50) DEFAULT 'pending',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(repo_name, owner, run_id)
-                )
-            """)
+                        fix_status VARCHAR(50) DEFAULT 'pending',
+                        confidence_score FLOAT,
+                        error_category VARCHAR(100),
+                        fix_complexity VARCHAR(50),
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(repo_name, owner, run_id)
+                    )
+                """)
+                
+                # Add missing columns if they don't exist (for existing databases)
+                try:
+                    cursor.execute("""
+                        ALTER TABLE workflow_runs 
+                        ADD COLUMN IF NOT EXISTS confidence_score FLOAT,
+                        ADD COLUMN IF NOT EXISTS error_category VARCHAR(100),
+                        ADD COLUMN IF NOT EXISTS fix_complexity VARCHAR(50)
+                    """)
+                except Exception as e:
+                    # Column might already exist, ignore the error
+                    pass
             
             # Create portia_plans table for tracking agent execution
             cursor.execute("""
@@ -273,6 +288,34 @@ class PostgreSQLCICDFixerDB:
             """, (status, run_id))
             
             conn.commit()
+    
+    def store_fix_metadata(self, failure_id: str, metadata: Dict[str, Any]) -> None:
+        """Store additional metadata for a fix suggestion."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Update the workflow run with additional metadata
+                cursor.execute("""
+                    UPDATE workflow_runs 
+                    SET 
+                        confidence_score = %s,
+                        error_category = %s,
+                        fix_complexity = %s,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                """, (
+                    metadata.get('confidence_score'),
+                    metadata.get('error_category'),
+                    metadata.get('fix_complexity'),
+                    failure_id
+                ))
+                
+                conn.commit()
+                print(f"✅ Stored fix metadata for failure {failure_id}")
+                
+        except Exception as e:
+            print(f"❌ Error storing fix metadata: {e}")
     
     def insert_portia_plan(self, plan_data: Dict[str, Any]) -> int:
         """Insert a new Portia plan record."""
@@ -448,12 +491,26 @@ class PostgreSQLCICDFixerDB:
             """, (json.dumps(analysis_result), failure_id))
     
     def get_pending_fixes(self) -> List[Dict[str, Any]]:
-        """Get all pending fixes"""
+        """Get all pending fixes that require human approval"""
         with self.get_connection() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             cursor.execute("""
-                SELECT * FROM workflow_runs 
-                WHERE status = 'suggested' OR fix_status = 'suggested'
+                SELECT 
+                    id,
+                    repo_name,
+                    owner,
+                    run_id,
+                    workflow_name,
+                    suggested_fix,
+                    fix_status,
+                    confidence_score,
+                    error_category,
+                    fix_complexity,
+                    created_at,
+                    updated_at
+                FROM workflow_runs 
+                WHERE fix_status IN ('pending', 'suggested', 'waiting_approval') 
+                AND suggested_fix IS NOT NULL
                 ORDER BY created_at DESC
             """)
             return [dict(row) for row in cursor.fetchall()]

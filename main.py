@@ -449,7 +449,7 @@ async def handle_webhook(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 async def analyze_failure_async(owner: str, repo: str, run_id: int, failure_id: str):
-    """Asynchronously analyze a CI/CD failure."""
+    """Asynchronously analyze a CI/CD failure and store fixes if generated."""
     try:
         logger.info(f"🔍 Starting analysis for {owner}/{repo} run #{run_id}")
         
@@ -459,12 +459,38 @@ async def analyze_failure_async(owner: str, repo: str, run_id: int, failure_id: 
         if analysis_result:
             # Store analysis results
             db.store_analysis(failure_id, analysis_result)
-            logger.info(f"✅ Analysis completed for failure {failure_id}")
+            
+            # Check if a fix was suggested and store it properly
+            suggested_fix = analysis_result.get("suggested_fix")
+            if suggested_fix:
+                logger.info(f"💡 Fix suggested for {owner}/{repo}#{run_id}: {suggested_fix[:100]}...")
+                
+                # Update the workflow run with the suggested fix
+                db.update_workflow_run_fix(
+                    run_id=int(failure_id),  # Using failure_id as the database ID
+                    suggested_fix=suggested_fix,
+                    fix_status='pending'  # Set to pending to require human approval
+                )
+                
+                # Store additional fix metadata if available
+                fix_metadata = {
+                    "confidence_score": analysis_result.get("confidence_score", 0.7),
+                    "error_category": analysis_result.get("error_category", "unknown"),
+                    "fix_complexity": analysis_result.get("fix_complexity", "medium"),
+                    "requires_approval": True,
+                    "generated_at": analysis_result.get("analyzed_at")
+                }
+                
+                db.store_fix_metadata(failure_id, fix_metadata)
+                
+                logger.info(f"✅ Analysis and fix suggestion completed for failure {failure_id}")
+            else:
+                logger.info(f"✅ Analysis completed but no fix suggested for failure {failure_id}")
         else:
             logger.error(f"❌ Analysis failed for failure {failure_id}")
             
     except Exception as e:
-        logger.error(f"Analysis error for {owner}/{repo} run #{run_id}: {e}")
+        logger.error(f"❌ Analysis error for {owner}/{repo} run #{run_id}: {e}")
 
 @app.post(
     "/analyze",

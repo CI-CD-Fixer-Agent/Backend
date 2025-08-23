@@ -112,6 +112,57 @@ class GeminiFixerAgent:
             print(f"❌ Analysis failed for {owner}/{repo}#{run_id}: {e}")
             return None
     
+    async def analyze_workflow_failure(self, workflow_data: Dict[str, Any], logs: str) -> Optional[Dict[str, Any]]:
+        """
+        Analyze workflow failure with provided data and logs - used by Portia agent.
+        
+        Args:
+            workflow_data: GitHub workflow run data
+            logs: Workflow logs content
+            
+        Returns:
+            Analysis results with fix suggestions or None if analysis fails
+        """
+        try:
+            repo_context = {
+                "repo_name": f"{workflow_data.get('repository', {}).get('name', 'unknown')}",
+                "owner": workflow_data.get('repository', {}).get('owner', {}).get('login', 'unknown'),
+                "workflow_name": workflow_data.get('name', 'unknown'),
+                "status": workflow_data.get('conclusion', 'failed'),
+                "run_id": workflow_data.get('id', 'unknown'),
+                "html_url": workflow_data.get('html_url', ''),
+                "created_at": workflow_data.get('created_at', ''),
+                "updated_at": workflow_data.get('updated_at', '')
+            }
+            
+            print(f"🔍 Analyzing workflow failure: {repo_context['repo_name']} run #{repo_context['run_id']}")
+            
+            # Use the existing analysis method
+            analysis_result = self.analyze_failure_and_suggest_fix(logs, repo_context)
+            
+            if analysis_result and analysis_result.get("suggested_fix"):
+                # Enhance with additional context for better fix suggestions
+                analysis_result.update({
+                    "workflow_context": workflow_data,
+                    "fix_ready_for_approval": True,
+                    "confidence_score": analysis_result.get("confidence_score", 0.8),
+                    "requires_human_approval": True
+                })
+                
+                print(f"✅ Workflow analysis completed with fix suggestion")
+                return analysis_result
+            else:
+                print(f"⚠️ Analysis completed but no actionable fix generated")
+                return {
+                    "error": "No actionable fix could be generated",
+                    "analysis_attempted": True,
+                    "workflow_context": workflow_data
+                }
+                
+        except Exception as e:
+            print(f"❌ Workflow analysis failed: {e}")
+            return None
+    
     def _build_analysis_prompt(self, error_logs: str, repo_context: Dict[str, Any]) -> str:
         """Build a comprehensive prompt for Gemini analysis with enhanced context."""
         
