@@ -749,7 +749,7 @@ async def approve_fix(fix_id: str):
         if not fix:
             raise HTTPException(status_code=404, detail="Fix not found")
         
-        if fix["status"] != "pending":
+        if fix["fix_status"] != "pending":
             raise HTTPException(status_code=400, detail="Fix is not in pending state")
         
         # Update fix status
@@ -774,7 +774,7 @@ async def reject_fix(fix_id: str):
         if not fix:
             raise HTTPException(status_code=404, detail="Fix not found")
         
-        if fix["status"] != "pending":
+        if fix["fix_status"] != "pending":
             raise HTTPException(status_code=400, detail="Fix is not in pending state")
         
         # Update fix status
