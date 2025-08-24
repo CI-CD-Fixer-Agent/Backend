@@ -163,10 +163,13 @@ app = FastAPI(
     ]
 )
 
+raw_origins = os.getenv("FRONTEND_URL", "")
+origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("FRONTEND_URL", "https://ci-cd-agent-frontend.vercel.app")],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
