@@ -2,6 +2,8 @@ import os
 import requests
 from typing import Dict, Any, Optional, List
 import json
+import base64
+from datetime import datetime
 
 class GitHubService:
     def __init__(self, token: Optional[str] = None):
@@ -114,6 +116,279 @@ class GitHubService:
         ).hexdigest()
         
         return hmac.compare_digest(expected_signature, signature)
+    
+    def get_repository_contents(self, owner: str, repo: str, path: str = "", ref: str = "main") -> Optional[List[Dict[str, Any]]]:
+        """Get repository contents at a specific path."""
+        url = f"{self.base_url}/repos/{owner}/{repo}/contents/{path}"
+        params = {"ref": ref} if ref else {}
+        
+        try:
+            response = requests.get(url, headers=self.headers, params=params)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            print(f"Error fetching repository contents: {e}")
+            return None
+    
+    def get_file_content(self, owner: str, repo: str, path: str, ref: str = "main") -> Optional[Dict[str, Any]]:
+        """Get content of a specific file."""
+        url = f"{self.base_url}/repos/{owner}/{repo}/contents/{path}"
+        params = {"ref": ref} if ref else {}
+        
+        try:
+            response = requests.get(url, headers=self.headers, params=params)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            print(f"Error fetching file content: {e}")
+            return None
+    
+    def create_or_update_file(self, owner: str, repo: str, path: str, content: str, 
+                            message: str, branch: str = "main", sha: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Create or update a file in the repository."""
+        url = f"{self.base_url}/repos/{owner}/{repo}/contents/{path}"
+        
+        # Encode content to base64
+        encoded_content = base64.b64encode(content.encode()).decode()
+        
+        data = {
+            "message": message,
+            "content": encoded_content,
+            "branch": branch
+        }
+        
+        # If updating existing file, include SHA
+        if sha:
+            data["sha"] = sha
+        
+        try:
+            response = requests.put(url, headers=self.headers, json=data)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            print(f"Error creating/updating file: {e}")
+            return None
+    
+    def create_branch(self, owner: str, repo: str, branch_name: str, base_branch: str = "main") -> Optional[Dict[str, Any]]:
+        """Create a new branch from base branch."""
+        # First get the SHA of the base branch
+        base_ref_url = f"{self.base_url}/repos/{owner}/{repo}/git/refs/heads/{base_branch}"
+        
+        try:
+            response = requests.get(base_ref_url, headers=self.headers)
+            response.raise_for_status()
+            base_sha = response.json()["object"]["sha"]
+            
+            # Create new branch
+            create_ref_url = f"{self.base_url}/repos/{owner}/{repo}/git/refs"
+            data = {
+                "ref": f"refs/heads/{branch_name}",
+                "sha": base_sha
+            }
+            
+            response = requests.post(create_ref_url, headers=self.headers, json=data)
+            response.raise_for_status()
+            return response.json()
+            
+        except requests.RequestException as e:
+            print(f"Error creating branch: {e}")
+            return None
+    
+    def get_default_branch(self, owner: str, repo: str) -> str:
+        """Get the default branch of the repository."""
+        url = f"{self.base_url}/repos/{owner}/{repo}"
+        
+        try:
+            response = requests.get(url, headers=self.headers)
+            response.raise_for_status()
+            return response.json().get("default_branch", "main")
+        except requests.RequestException as e:
+            print(f"Error fetching repository info: {e}")
+            return "main"  # Default fallback
+    
+    def apply_fix_to_repository(self, owner: str, repo: str, fix_content: str, fix_id: str) -> Optional[Dict[str, Any]]:
+        """Apply a fix to the repository by creating a PR with the suggested changes."""
+        try:
+            # Generate unique branch name
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            branch_name = f"fix/cicd-auto-fix-{fix_id}-{timestamp}"
+            
+            # Get default branch
+            default_branch = self.get_default_branch(owner, repo)
+            
+            # Create a new branch
+            branch_result = self.create_branch(owner, repo, branch_name, default_branch)
+            if not branch_result:
+                return None
+            
+            # Parse fix content to extract file changes
+            # This is a simplified implementation - in production you'd want more sophisticated parsing
+            fix_files = self._parse_fix_content(fix_content)
+            
+            # Apply each file change
+            for file_change in fix_files:
+                file_path = file_change.get("path")
+                new_content = file_change.get("content")
+                
+                if not file_path or not new_content:
+                    continue
+                
+                # Get existing file to get SHA (if it exists)
+                existing_file = self.get_file_content(owner, repo, file_path, branch_name)
+                sha = existing_file.get("sha") if existing_file else None
+                
+                # Create or update the file
+                commit_message = f"Auto-fix: Update {file_path} (Fix #{fix_id})"
+                self.create_or_update_file(
+                    owner, repo, file_path, new_content, 
+                    commit_message, branch_name, sha
+                )
+            
+            # Create Pull Request
+            pr_title = f"🤖 Auto-fix for CI/CD Failure (Fix #{fix_id})"
+            pr_body = f"""
+## 🤖 Automated Fix
+
+This PR contains an automated fix for a CI/CD failure.
+
+### Fix Details:
+{fix_content}
+
+### Changes:
+- Automatically generated fix based on failure analysis
+- Applied by CI/CD Fixer Agent
+
+### Review Required:
+Please review the changes before merging to ensure they are correct.
+
+---
+*Generated by CI/CD Fixer Agent*
+            """
+            
+            pr_result = self.create_pull_request(
+                owner, repo, pr_title, pr_body, branch_name, default_branch
+            )
+            
+            return {
+                "branch_name": branch_name,
+                "pull_request": pr_result,
+                "files_changed": len(fix_files)
+            }
+            
+        except Exception as e:
+            print(f"Error applying fix to repository: {e}")
+            return None
+    
+    def _parse_fix_content(self, fix_content: str) -> List[Dict[str, str]]:
+        """
+        Parse fix content to extract file changes.
+        This is a simplified implementation - in production you'd want more sophisticated parsing.
+        """
+        # For now, create a simple fix file with the suggested changes
+        # In production, you'd parse the fix content to extract specific file changes
+        
+        files = []
+        
+        # Check if the fix mentions specific files
+        if "package.json" in fix_content.lower():
+            # Example: Create a simple package.json fix
+            files.append({
+                "path": "package.json",
+                "content": self._generate_package_json_fix(fix_content)
+            })
+        elif "dockerfile" in fix_content.lower():
+            files.append({
+                "path": "Dockerfile",
+                "content": self._generate_dockerfile_fix(fix_content)
+            })
+        elif ".github/workflows" in fix_content.lower():
+            files.append({
+                "path": ".github/workflows/ci.yml",
+                "content": self._generate_workflow_fix(fix_content)
+            })
+        else:
+            # Create a general fix script
+            files.append({
+                "path": "AUTOMATED_FIX.md",
+                "content": f"""# Automated Fix
+
+## Fix Applied:
+{fix_content}
+
+## Instructions:
+Please review the suggested changes and apply them manually if needed.
+
+Generated on: {datetime.now().isoformat()}
+"""
+            })
+        
+        return files
+    
+    def _generate_package_json_fix(self, fix_content: str) -> str:
+        """Generate a basic package.json fix."""
+        return '''
+{
+  "name": "fixed-project",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "npm run build",
+    "test": "npm test",
+    "start": "npm start"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
+'''
+    
+    def _generate_dockerfile_fix(self, fix_content: str) -> str:
+        """Generate a basic Dockerfile fix."""
+        return '''
+FROM node:18-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+
+EXPOSE 3000
+
+CMD ["npm", "start"]
+'''
+    
+    def _generate_workflow_fix(self, fix_content: str) -> str:
+        """Generate a basic GitHub Actions workflow fix."""
+        return '''
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        
+    - name: Install dependencies
+      run: npm install
+      
+    - name: Run tests
+      run: npm test
+      
+    - name: Build
+      run: npm run build
+'''
     
     def _get_sample_logs(self) -> str:
         """Return sample logs for demo purposes when GitHub API is not available."""

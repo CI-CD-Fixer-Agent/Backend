@@ -221,6 +221,10 @@ try:
     gemini_agent = GeminiFixerAgent()
     pattern_analyzer = CICDPatternAnalyzer()
     repo_learning = RepositoryLearningSystem()
+    
+    # Add missing columns for fix application tracking
+    db.add_missing_columns_if_needed()
+    
     logger.info("✅ All services initialized successfully")
 except Exception as e:
     logger.error(f"❌ Failed to initialize services: {e}")
@@ -746,7 +750,7 @@ async def get_failure_detail(failure_id: int):
 
 @app.post("/fixes/{fix_id}/approve")
 async def approve_fix(fix_id: str):
-    """Approve a suggested fix."""
+    """Approve a suggested fix and apply it to the repository."""
     try:
         fix = db.get_fix(fix_id)
         if not fix:
@@ -755,19 +759,99 @@ async def approve_fix(fix_id: str):
         if fix["fix_status"] != "pending":
             raise HTTPException(status_code=400, detail="Fix is not in pending state")
         
-        # Update fix status
+        # Update fix status to approved
         db.update_fix_status(fix_id, "approved")
-        
-        # TODO: Implement actual fix application
         logger.info(f"✅ Fix {fix_id} approved")
         
-        return {"message": "Fix approved successfully", "fix_id": fix_id}
+        # Apply the fix to the repository
+        try:
+            await apply_fix_to_repository(fix_id, fix)
+            return {"message": "Fix approved and application started", "fix_id": fix_id}
+        except Exception as e:
+            logger.error(f"❌ Failed to apply fix {fix_id}: {e}")
+            # Update status to show application failed
+            db.update_fix_application_result(
+                fix_id, "approved_application_failed", 
+                error_message=str(e)
+            )
+            return {"message": "Fix approved but application failed", "fix_id": fix_id, "error": str(e)}
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to approve fix {fix_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+async def apply_fix_to_repository(fix_id: str, fix: Dict[str, Any]):
+    """Apply the approved fix to the repository."""
+    try:
+        owner = fix["owner"]
+        repo = fix["repo_name"]
+        suggested_fix = fix["suggested_fix"]
+        workflow_name = fix.get("workflow_name", "Unknown Workflow")
+        
+        logger.info(f"🚀 Applying fix {fix_id} to {owner}/{repo}")
+        
+        # Update status to indicate application is in progress
+        db.update_fix_status(fix_id, "applying")
+        
+        # Apply fix using GitHub service
+        application_result = github_service.apply_fix_to_repository(
+            owner, repo, suggested_fix, fix_id
+        )
+        
+        if application_result:
+            # Successfully created PR
+            pr_url = application_result.get("pull_request", {}).get("html_url")
+            branch_name = application_result.get("branch_name")
+            
+            db.update_fix_application_result(
+                fix_id, "applied", pr_url=pr_url, branch_name=branch_name
+            )
+            
+            logger.info(f"✅ Fix {fix_id} applied successfully. PR: {pr_url}")
+            
+            # Optionally, you could add auto-merge logic here for low-risk fixes
+            # await auto_merge_if_safe(owner, repo, pr_url, fix)
+            
+        else:
+            # Application failed
+            db.update_fix_application_result(
+                fix_id, "application_failed", 
+                error_message="Failed to create PR or apply changes"
+            )
+            logger.error(f"❌ Failed to apply fix {fix_id}")
+            
+    except Exception as e:
+        logger.error(f"❌ Error applying fix {fix_id}: {e}")
+        db.update_fix_application_result(
+            fix_id, "application_failed", 
+            error_message=str(e)
+        )
+        raise
+
+async def auto_merge_if_safe(owner: str, repo: str, pr_url: str, fix: Dict[str, Any]):
+    """
+    Optionally auto-merge PR if the fix is considered safe.
+    This is a placeholder for advanced logic that could:
+    - Check fix confidence score
+    - Verify tests pass
+    - Apply business rules for auto-merge
+    """
+    try:
+        confidence_score = fix.get("confidence_score", 0)
+        fix_complexity = fix.get("fix_complexity", "high")
+        
+        # Only auto-merge if confidence is high and complexity is low
+        if confidence_score > 0.8 and fix_complexity == "low":
+            logger.info(f"🤖 Fix meets criteria for auto-merge: confidence={confidence_score}, complexity={fix_complexity}")
+            # TODO: Implement auto-merge logic
+            # github_service.merge_pull_request(owner, repo, pr_number)
+        else:
+            logger.info(f"⏳ Fix requires manual review: confidence={confidence_score}, complexity={fix_complexity}")
+            
+    except Exception as e:
+        logger.error(f"⚠️  Error in auto-merge check: {e}")
 
 @app.post("/fixes/{fix_id}/reject")
 async def reject_fix(fix_id: str):
@@ -791,6 +875,52 @@ async def reject_fix(fix_id: str):
         raise
     except Exception as e:
         logger.error(f"Failed to reject fix {fix_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/fixes/{fix_id}/status")
+async def get_fix_status(fix_id: str):
+    """Get detailed status of a fix including application results."""
+    try:
+        fix = db.get_fix(fix_id)
+        if not fix:
+            raise HTTPException(status_code=404, detail="Fix not found")
+        
+        return {
+            "fix_id": fix_id,
+            "status": fix["fix_status"],
+            "pr_url": fix.get("pr_url"),
+            "branch_name": fix.get("fix_branch"),
+            "error_message": fix.get("fix_error"),
+            "created_at": fix["created_at"],
+            "updated_at": fix["updated_at"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get fix status {fix_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/fixes/{fix_id}/apply")
+async def manually_apply_fix(fix_id: str):
+    """Manually trigger fix application (for already approved fixes)."""
+    try:
+        fix = db.get_fix(fix_id)
+        if not fix:
+            raise HTTPException(status_code=404, detail="Fix not found")
+        
+        if fix["fix_status"] not in ["approved", "application_failed"]:
+            raise HTTPException(status_code=400, detail="Fix must be approved before application")
+        
+        # Apply the fix
+        await apply_fix_to_repository(fix_id, fix)
+        
+        return {"message": "Fix application triggered", "fix_id": fix_id}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to apply fix {fix_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/plans/{plan_run_id}/clarifications/{clarification_id}")

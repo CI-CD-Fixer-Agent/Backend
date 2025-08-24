@@ -290,6 +290,45 @@ class PostgreSQLCICDFixerDB:
             
             conn.commit()
     
+    def update_fix_application_result(self, run_id: int, status: str, pr_url: str = None, branch_name: str = None, error_message: str = None):
+        """Update the fix status with application results."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Create or update the application result
+            cursor.execute("""
+                UPDATE workflow_runs 
+                SET 
+                    fix_status = %s,
+                    pr_url = %s,
+                    fix_branch = %s,
+                    fix_error = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+            """, (status, pr_url, branch_name, error_message, run_id))
+            
+            conn.commit()
+    
+    def add_missing_columns_if_needed(self):
+        """Add missing columns for fix application tracking."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Add columns for tracking fix application
+                cursor.execute("""
+                    ALTER TABLE workflow_runs 
+                    ADD COLUMN IF NOT EXISTS pr_url TEXT,
+                    ADD COLUMN IF NOT EXISTS fix_branch TEXT,
+                    ADD COLUMN IF NOT EXISTS fix_error TEXT
+                """)
+                
+                conn.commit()
+                print("✅ Added missing columns for fix tracking")
+                
+        except Exception as e:
+            print(f"⚠️  Error adding columns (may already exist): {e}")
+    
     def store_fix_metadata(self, failure_id: str, metadata: Dict[str, Any]) -> None:
         """Store additional metadata for a fix suggestion."""
         try:
