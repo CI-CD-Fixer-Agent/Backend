@@ -1146,6 +1146,10 @@ async def get_model_performance():
         logger.error(f"Model performance analysis failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/ping")
+async def ping_get():
+    return {"status": "alive"}
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     host = os.getenv("HOST", "0.0.0.0")
