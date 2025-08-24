@@ -9,7 +9,7 @@ from typing import Dict, Any, List, Optional
 from collections import Counter
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi import FastAPI, HTTPException, Request, Depends, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -1145,6 +1145,10 @@ async def get_model_performance():
     except Exception as e:
         logger.error(f"Model performance analysis failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.head("/ping")
+async def ping_head():
+    return Response(status_code=200)
 
 @app.get("/ping")
 async def ping_get():
