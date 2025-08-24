@@ -435,43 +435,59 @@ async def handle_webhook(request: Request):
             logger.warning("Missing 'action' field in webhook payload")
             return {"message": "Webhook received but missing required fields"}
         
-        if "workflow_run" not in payload:
-            logger.warning("Missing 'workflow_run' field in webhook payload")
-            return {"message": "Webhook received but missing workflow_run data"}
-        
         if "repository" not in payload:
             logger.warning("Missing 'repository' field in webhook payload")
             return {"message": "Webhook received but missing repository data"}
         
-        # Only process failed workflow runs
+        # Handle both workflow_run and workflow_job events
+        workflow_data = None
+        event_type = request.headers.get("X-GitHub-Event")
+        
+        if event_type == "workflow_run" and "workflow_run" in payload:
+            workflow_data = payload["workflow_run"]
+        elif event_type == "workflow_job" and "workflow_job" in payload:
+            # Convert workflow_job to workflow_run format for consistency
+            job_data = payload["workflow_job"]
+            workflow_data = {
+                "id": job_data.get("run_id"),  # Use run_id instead of job id
+                "name": job_data.get("workflow_name", "Unknown"),
+                "conclusion": job_data.get("conclusion"),
+                "html_url": job_data.get("run_url", job_data.get("html_url")),
+                "created_at": job_data.get("created_at"),
+                "updated_at": job_data.get("completed_at", job_data.get("created_at"))
+            }
+        else:
+            logger.warning(f"Unsupported event type: {event_type} or missing workflow data")
+            return {"message": f"Webhook received but unsupported event type: {event_type}"}
+        
+        # Only process failed workflow runs/jobs
         if (payload.get("action") == "completed" and 
-            payload.get("workflow_run", {}).get("conclusion") == "failure"):
+            workflow_data and workflow_data.get("conclusion") == "failure"):
             
             try:
                 repository = payload["repository"]
-                workflow_run = payload["workflow_run"]
                 
                 # Extract required data with fallbacks
                 owner = repository.get("owner", {}).get("login")
                 repo = repository.get("name")
-                run_id = workflow_run.get("id")
+                run_id = workflow_data.get("id")
                 
                 if not all([owner, repo, run_id]):
                     logger.error(f"Missing required data: owner={owner}, repo={repo}, run_id={run_id}")
                     return {"message": "Webhook received but missing required repository/workflow data"}
                 
-                logger.info(f"🔥 Detected failed workflow: {owner}/{repo} run #{run_id}")
+                logger.info(f"🔥 Detected failed workflow: {owner}/{repo} run #{run_id} (event: {event_type})")
                 
                 # Store failure in database with safe field access
                 failure_data = {
                     "owner": owner,
                     "repo": repo,
                     "run_id": run_id,
-                    "workflow_name": workflow_run.get("name", "Unknown"),
-                    "conclusion": workflow_run.get("conclusion", "failure"),
-                    "html_url": workflow_run.get("html_url", f"https://github.com/{owner}/{repo}/actions/runs/{run_id}"),
-                    "created_at": workflow_run.get("created_at", datetime.utcnow().isoformat()),
-                    "updated_at": workflow_run.get("updated_at", datetime.utcnow().isoformat())
+                    "workflow_name": workflow_data.get("name", "Unknown"),
+                    "conclusion": workflow_data.get("conclusion", "failure"),
+                    "html_url": workflow_data.get("html_url", f"https://github.com/{owner}/{repo}/actions/runs/{run_id}"),
+                    "created_at": workflow_data.get("created_at", datetime.utcnow().isoformat()),
+                    "updated_at": workflow_data.get("updated_at", datetime.utcnow().isoformat())
                 }
                 
                 failure_id = db.store_failure(failure_data)
