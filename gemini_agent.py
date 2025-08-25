@@ -35,7 +35,7 @@ class GeminiFixerAgent:
         """Use Gemini AI to analyze the failure and suggest fixes (google-genai SDK)."""
         prompt = self._build_analysis_prompt(error_logs, repo_context)
         try:
-            # Try the new API format first
+           
             response = self.client.models.generate_content(
                 model="gemini-2.5-pro",
                 contents=[{"parts": [{"text": prompt}]}],
@@ -48,7 +48,7 @@ class GeminiFixerAgent:
             return self._parse_gemini_response(response.text)
         except Exception as e:
             print(f"Error calling Gemini API (new format): {e}")
-            # Try alternative format
+         
             try:
                 response = self.client.models.generate_content(
                     model="gemini-2.5-pro",
@@ -60,7 +60,7 @@ class GeminiFixerAgent:
                     )
                 )
                 
-                # Extract text from response properly
+             
                 response_text = ""
                 if hasattr(response, 'text') and response.text:
                     response_text = response.text
@@ -95,14 +95,14 @@ class GeminiFixerAgent:
         try:
             from github_service import GitHubService
             
-            # Initialize GitHub service if needed
+         
             github_service = GitHubService()
             
-            # Fetch workflow run data
+       
             workflow_data = github_service.get_workflow_run(owner, repo, run_id)
             if not workflow_data:
                 print(f"❌ Could not fetch workflow run data for {owner}/{repo}#{run_id}")
-                # Create fallback workflow data for analysis
+              
                 workflow_data = {
                     "id": run_id,
                     "name": "Unknown Workflow",
@@ -112,14 +112,14 @@ class GeminiFixerAgent:
                     "repository": {"full_name": f"{owner}/{repo}"}
                 }
             
-            # Fetch workflow logs (this has fallback sample logs)
+           
             logs = github_service.get_workflow_logs(owner, repo, run_id)
             if not logs:
                 print(f"❌ Could not fetch workflow logs for {owner}/{repo}#{run_id}")
-                # Use a generic error log for analysis
+             
                 logs = "Build failed with unknown error. No detailed logs available."
             
-            # Prepare repository context
+          
             repo_context = {
                 "owner": owner,
                 "repo": repo,
@@ -132,11 +132,11 @@ class GeminiFixerAgent:
                 "head_sha": workflow_data.get("head_sha", "")[:8]
             }
             
-            # Analyze using Gemini
+           
             print(f"🤖 Analyzing failure with Gemini AI for {owner}/{repo}#{run_id}")
             analysis_result = self.analyze_failure_and_suggest_fix(logs, repo_context)
             
-            # Add metadata to result
+           
             analysis_result.update({
                 "owner": owner,
                 "repo": repo,
@@ -177,11 +177,11 @@ class GeminiFixerAgent:
             
             print(f"🔍 Analyzing workflow failure: {repo_context['repo_name']} run #{repo_context['run_id']}")
             
-            # Use the existing analysis method
+          
             analysis_result = self.analyze_failure_and_suggest_fix(logs, repo_context)
             
             if analysis_result and analysis_result.get("suggested_fix"):
-                # Enhance with additional context for better fix suggestions
+              
                 analysis_result.update({
                     "workflow_context": workflow_data,
                     "fix_ready_for_approval": True,
@@ -206,7 +206,7 @@ class GeminiFixerAgent:
     def _build_analysis_prompt(self, error_logs: str, repo_context: Dict[str, Any]) -> str:
         """Build a comprehensive prompt for Gemini analysis with enhanced context."""
         
-        # Detect project type from repository context
+    
         project_type = self._detect_project_type(error_logs, repo_context)
         language_hints = self._get_language_specific_hints(project_type)
         
@@ -282,7 +282,7 @@ Focus on providing actionable, specific fixes. If you see dependency issues, sug
         error_logs_lower = error_logs.lower()
         repo_name = repo_context.get('repo_name', '').lower()
         
-        # Check for specific technology indicators
+    
         if any(keyword in error_logs_lower for keyword in ['npm', 'yarn', 'package.json', 'node_modules']):
             if 'next' in error_logs_lower or 'react' in error_logs_lower:
                 return "Next.js/React"
@@ -318,7 +318,7 @@ Focus on providing actionable, specific fixes. If you see dependency issues, sug
         elif any(keyword in error_logs_lower for keyword in ['.net', 'dotnet', 'csharp']):
             return ".NET/C#"
             
-        # Check repository name for hints
+      
         if any(tech in repo_name for tech in ['react', 'next', 'vue', 'angular']):
             return "Frontend/JavaScript"
         elif any(tech in repo_name for tech in ['api', 'backend', 'server']):
@@ -405,22 +405,22 @@ General CI/CD Issues:
         """Parse Gemini's response and extract structured data."""
         
         try:
-            # Try to extract JSON from the response
+           
             import re
             
-            # Look for JSON block in the response
+    
             json_match = re.search(r'```json\n(.*?)\n```', response_text, re.DOTALL)
             if json_match:
                 json_str = json_match.group(1)
                 return json.loads(json_str)
             
-            # If no JSON block found, try to parse the entire response
+         
             return json.loads(response_text)
             
         except (json.JSONDecodeError, AttributeError) as e:
             print(f"Failed to parse Gemini response as JSON: {e}")
             
-            # Return a structured fallback based on the text response
+ 
             return {
                 "error_type": "unknown",
                 "root_cause": "Failed to parse AI analysis",
@@ -440,7 +440,7 @@ General CI/CD Issues:
     def _analyze_with_fallback(self, error_logs: str, repo_context: Dict[str, Any]) -> Dict[str, Any]:
         """Fallback analysis when Gemini API is not available."""
         
-        # Simple rule-based analysis for common CI/CD issues
+     
         error_logs_lower = error_logs.lower()
         
         if "npm err" in error_logs_lower or "yarn error" in error_logs_lower:

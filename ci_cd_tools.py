@@ -15,12 +15,10 @@ from postgres_database import PostgreSQLCICDFixerDB
 
 logger = logging.getLogger(__name__)
 
-# Initialize global services
 github_service = GitHubService()
 gemini_agent = GeminiFixerAgent()
 db = PostgreSQLCICDFixerDB()
 
-# Input schemas
 class WorkflowRunInput(BaseModel):
     owner: str = Field(description="Repository owner") 
     repo: str = Field(description="Repository name")
@@ -46,7 +44,6 @@ class AnalysisStorageInput(BaseModel):
     analysis_result: Dict[str, Any] = Field(description="Analysis results to store")
     failure_id: str = Field(description="Workflow failure ID")
 
-# Tool implementations
 
 class FetchWorkflowRunTool(Tool):
     id: str = "fetch_workflow_run"
@@ -94,7 +91,6 @@ class FetchWorkflowLogsTool(Tool):
         try:
             logs = github_service.get_workflow_run_logs(owner, repo, run_id)
             
-            # Also get job details for more context
             jobs = github_service.get_workflow_run_jobs(owner, repo, run_id)
             
             complete_logs = f"=== Workflow Run {run_id} Logs ===\n"
@@ -132,7 +128,6 @@ class AnalyzeErrorsTool(Tool):
         try:
             logger.info(f"Starting error analysis for repository {repo}")
             
-            # Create analysis prompt
             prompt = f"""
             Analyze the following CI/CD workflow failure logs and provide:
             1. Root cause analysis
@@ -146,7 +141,6 @@ class AnalyzeErrorsTool(Tool):
             {logs}
             """
             
-            # Use Gemini for analysis
             analysis = gemini_agent.analyze_ci_failure(prompt)
             
             if analysis:
@@ -171,7 +165,6 @@ class GenerateFixTool(Tool):
         try:
             logger.info(f"Generating fix for repository {repo}")
             
-            # Create fix generation prompt
             prompt = f"""
             Based on the following error analysis, generate specific, actionable fixes:
             
@@ -185,7 +178,6 @@ class GenerateFixTool(Tool):
             4. Testing recommendations
             """
             
-            # Use Gemini to generate fixes
             fix = gemini_agent.generate_fix(prompt)
             
             if fix:
@@ -209,11 +201,6 @@ class ApplyFixTool(Tool):
         """Apply fixes to the repository (simulation)."""
         try:
             logger.info(f"Simulating fix application for {owner}/{repo}")
-            
-            # In a real implementation, this would:
-            # 1. Create a PR with the fix
-            # 2. Run tests
-            # 3. Wait for approval
             
             result = f"""
             Fix Application Simulation for {owner}/{repo}
@@ -251,8 +238,7 @@ class CheckApprovalTool(Tool):
         try:
             logger.info(f"Checking approval status for workflow run {workflow_run_id}")
             
-            # Check database for approval status
-            # In a real implementation, this would check actual approval systems
+          
             
             return f"Approval check for workflow run {workflow_run_id}: Pending human review"
             
@@ -272,7 +258,7 @@ class StoreAnalysisTool(Tool):
         try:
             logger.info(f"Storing analysis results for failure {failure_id}")
             
-            # Store in database
+           
             db.store_analysis(failure_id, analysis_result)
             
             return f"Analysis stored successfully for failure ID: {failure_id}"
@@ -296,5 +282,5 @@ def create_ci_cd_tool_registry() -> List[Tool]:
     logger.info(f"Created CI/CD tool registry with {len(tools)} tools")
     return tools
 
-# Create the tool registry
+
 ci_cd_tool_registry = create_ci_cd_tool_registry()

@@ -48,7 +48,7 @@ class CICDPatternAnalyzer:
             Dictionary containing pattern analysis results
         """
         try:
-            # Get all workflow runs from the specified period
+           
             cutoff_date = datetime.utcnow() - timedelta(days=days_back)
             
             with self.db.get_connection() as conn:
@@ -71,7 +71,7 @@ class CICDPatternAnalyzer:
                     "recommendations": []
                 }
             
-            # Analyze patterns
+          
             patterns = self._extract_patterns(runs)
             
             return {
@@ -93,7 +93,7 @@ class CICDPatternAnalyzer:
     def _extract_patterns(self, runs: List[Tuple]) -> Dict[str, Any]:
         """Extract patterns from workflow run data."""
         
-        # Initialize pattern counters
+     
         repo_failures = Counter()
         error_types = Counter()
         time_patterns = defaultdict(int)
@@ -102,32 +102,31 @@ class CICDPatternAnalyzer:
         
         for run in runs:
             repo_name, owner, workflow_name, status, conclusion, error_log, suggested_fix, fix_status, created_at = run
-            
-            # Repository failure patterns
+          
             repo_key = f"{owner}/{repo_name}"
             repo_failures[repo_key] += 1
             
-            # Extract error types from logs
+          
             if error_log:
                 error_types.update(self._classify_error_types(error_log))
             
-            # Time-based patterns (hour of day)
+           
             if created_at:
                 hour = created_at.hour
                 time_patterns[hour] += 1
             
-            # Fix success rates
+   
             if suggested_fix and fix_status:
                 fix_success_rates[repo_key]["total"] += 1
                 if fix_status == "approved":
                     fix_success_rates[repo_key]["approved"] += 1
             
-            # Language/project type patterns
+          
             language = self._detect_project_language(repo_name, error_log)
             if language:
                 language_patterns[language] += 1
         
-        # Calculate success rates
+     
         success_rates = {}
         for repo, stats in fix_success_rates.items():
             if stats["total"] > 0:
@@ -215,14 +214,14 @@ class CICDPatternAnalyzer:
             for pattern in patterns:
                 if re.search(pattern, error_text):
                     detected_errors.append(error_type)
-                    break  # Only count each error type once per log
+                    break 
         
         return detected_errors
     
     def _detect_project_language(self, repo_name: str, error_log: str) -> Optional[str]:
         """Detect the primary programming language of a project."""
         
-        # Language indicators from repo name and error logs
+      
         language_indicators = {
             "javascript": ["package.json", "npm", "yarn", "node", "webpack", "jest", ".js", ".ts"],
             "python": ["requirements.txt", "pip", "pytest", "python", ".py", "virtualenv"],
@@ -243,7 +242,7 @@ class CICDPatternAnalyzer:
             if score > 0:
                 language_scores[language] = score
         
-        # Return the language with the highest score
+   
         if language_scores:
             return max(language_scores.items(), key=lambda x: x[1])[0]
         
@@ -253,7 +252,7 @@ class CICDPatternAnalyzer:
         """Generate actionable recommendations based on patterns."""
         recommendations = []
         
-        # Repository-specific recommendations
+      
         if patterns.get("most_failing_repos"):
             top_failing = list(patterns["most_failing_repos"].keys())[0]
             recommendations.append(
@@ -261,7 +260,7 @@ class CICDPatternAnalyzer:
                 f"which has {patterns['most_failing_repos'][top_failing]} failures"
             )
         
-        # Error type recommendations
+     
         if patterns.get("common_error_types"):
             top_error = list(patterns["common_error_types"].keys())[0]
             count = patterns["common_error_types"][top_error]
@@ -269,8 +268,7 @@ class CICDPatternAnalyzer:
                 f"Focus on improving {top_error} detection and fixes - "
                 f"appears in {count} failures"
             )
-        
-        # Time-based recommendations
+   
         if patterns.get("failure_time_distribution"):
             time_dist = patterns["failure_time_distribution"]
             peak_hour = max(time_dist.items(), key=lambda x: x[1])
@@ -279,14 +277,14 @@ class CICDPatternAnalyzer:
                 f"({peak_hour[1]} failures) - consider proactive monitoring"
             )
         
-        # Language-specific recommendations
+
         if patterns.get("language_distribution"):
             top_lang = list(patterns["language_distribution"].keys())[0]
             recommendations.append(
                 f"Enhance {top_lang} specific error detection and fix generation"
             )
         
-        # Success rate recommendations
+
         if patterns.get("fix_success_rates"):
             low_success_repos = [
                 repo for repo, stats in patterns["fix_success_rates"].items()
@@ -306,7 +304,7 @@ class CICDPatternAnalyzer:
             with self.db.get_connection() as conn:
                 cursor = conn.cursor()
                 
-                # First, check what fix_status values actually exist
+              
                 cursor.execute("""
                     SELECT DISTINCT fix_status, COUNT(*) 
                     FROM workflow_runs 
@@ -318,7 +316,7 @@ class CICDPatternAnalyzer:
                 status_counts = cursor.fetchall()
                 logger.info(f"Fix statuses found in database: {[row[0] for row in status_counts]}")
                 
-                # Overall fix statistics with corrected status mapping
+             
                 cursor.execute("""
                     SELECT 
                         COUNT(*) as total_fixes,
@@ -331,7 +329,7 @@ class CICDPatternAnalyzer:
                 
                 result = cursor.fetchone()
                 
-                # Handle case where query returns None or empty result
+             
                 if not result:
                     stats = (0, 0, 0, 0)
                 else:
@@ -354,7 +352,7 @@ class CICDPatternAnalyzer:
                 
                 total, approved, rejected, pending = stats
                 
-                # Fix effectiveness by error type (if we have error data)
+               
                 cursor.execute("""
                     SELECT error_log, fix_status, COUNT(*)
                     FROM workflow_runs 
@@ -365,7 +363,7 @@ class CICDPatternAnalyzer:
                 
                 effectiveness_data = cursor.fetchall()
                 
-                # Status distribution
+              
                 status_distribution = {status: count for status, count in status_counts}
                 
                 return {
@@ -402,11 +400,11 @@ class CICDPatternAnalyzer:
         type_stats = defaultdict(lambda: {"approved": 0, "rejected": 0, "pending": 0})
         
         for error_log, status, count in data:
-            # Classify the error type
+          
             error_types = self._classify_error_types(error_log)
             primary_type = error_types[0] if error_types else "unknown"
             
-            # Map actual database status values to our categories
+         
             if status in ('approved', 'accepted', 'applied', 'approved_no_action'):
                 category = "approved"
             elif status in ('rejected', 'declined', 'denied'):
@@ -414,11 +412,11 @@ class CICDPatternAnalyzer:
             elif status in ('pending', 'suggested', 'waiting'):
                 category = "pending"
             else:
-                category = "pending"  # Default to pending for unknown statuses
+                category = "pending"  
                 
             type_stats[primary_type][category] += count
         
-        # Calculate rates
+      
         effectiveness = {}
         for error_type, stats in type_stats.items():
             total = sum(stats.values())
@@ -456,7 +454,7 @@ class RepositoryLearningSystem:
             with self.db.get_connection() as conn:
                 cursor = conn.cursor()
                 
-                # Get all runs for this repository
+                
                 cursor.execute("""
                     SELECT workflow_name, status, conclusion, error_log, 
                            suggested_fix, fix_status, created_at
@@ -499,17 +497,16 @@ class RepositoryLearningSystem:
         for run in runs:
             workflow_name, status, conclusion, error_log, suggested_fix, fix_status, created_at = run
             
-            # Workflow failure patterns
+           
             if conclusion == "failure":
                 workflow_patterns[workflow_name] += 1
             
-            # Error pattern analysis
+          
             if error_log:
                 analyzer = CICDPatternAnalyzer()
                 error_types = analyzer._classify_error_types(error_log)
                 error_patterns.update(error_types)
-            
-            # Fix pattern tracking
+           
             if suggested_fix and fix_status:
                 fix_patterns.append({
                     "fix_preview": suggested_fix[:100] + "..." if len(suggested_fix) > 100 else suggested_fix,
@@ -517,14 +514,14 @@ class RepositoryLearningSystem:
                     "date": created_at.isoformat() if created_at else None
                 })
             
-            # Success trends (last 30 runs)
+           
             if len(success_trends) < 30:
                 success_trends.append({
                     "date": created_at.isoformat() if created_at else None,
                     "successful": conclusion != "failure"
                 })
         
-        # Calculate success rate
+      
         successful_runs = sum(1 for trend in success_trends if trend["successful"])
         success_rate = successful_runs / len(success_trends) if success_trends else 0
         
@@ -545,23 +542,21 @@ class RepositoryLearningSystem:
         """Generate repository-specific recommendations."""
         recommendations = []
         
-        # Workflow-specific recommendations
+      
         if workflow_patterns:
             most_failing_workflow = workflow_patterns.most_common(1)[0]
             recommendations.append(
                 f"Focus on stabilizing '{most_failing_workflow[0]}' workflow "
                 f"({most_failing_workflow[1]} failures)"
             )
-        
-        # Error-specific recommendations
+       
         if error_patterns:
             top_error = error_patterns.most_common(1)[0]
             recommendations.append(
                 f"Address recurring {top_error[0]} issues "
                 f"({top_error[1]} occurrences)"
             )
-        
-        # Success rate recommendations
+       
         if success_rate < 0.7:
             recommendations.append(
                 f"Success rate is {success_rate:.1%} - consider implementing "
@@ -603,10 +598,10 @@ class MLPatternRecognizer:
         if not error_log:
             return ""
         
-        # Normalize the error log
+      
         normalized = error_log.lower()
         
-        # Extract key error patterns
+     
         patterns = [
             r"error:?\s*(.+?)(?:\n|$)",
             r"failed:?\s*(.+?)(?:\n|$)",
@@ -618,25 +613,25 @@ class MLPatternRecognizer:
         extracted_parts = []
         for pattern in patterns:
             matches = re.findall(pattern, normalized)
-            extracted_parts.extend(matches[:3])  # Limit to 3 matches per pattern
+            extracted_parts.extend(matches[:3])  
         
-        # Remove file paths, line numbers, and timestamps
+       
         cleaned_parts = []
         for part in extracted_parts:
-            # Remove file paths
+          
             part = re.sub(r'/[\w/.-]+\.\w+', '<file>', part)
-            # Remove line numbers
+           
             part = re.sub(r'line\s+\d+', 'line <num>', part)
-            # Remove timestamps
+           
             part = re.sub(r'\d{4}-\d{2}-\d{2}|\d{2}:\d{2}:\d{2}', '<time>', part)
-            # Remove specific numbers but keep error codes
+           
             part = re.sub(r'\b\d+\b(?![a-z])', '<num>', part)
             
-            if len(part.strip()) > 10:  # Only include meaningful parts
+            if len(part.strip()) > 10:  
                 cleaned_parts.append(part.strip())
         
-        # Create signature hash
-        signature_text = " | ".join(cleaned_parts[:5])  # Limit to 5 parts
+       
+        signature_text = " | ".join(cleaned_parts[:5])  
         return hashlib.md5(signature_text.encode()).hexdigest()[:16]
     
     def calculate_similarity(self, sig1: str, sig2: str, log1: str, log2: str) -> float:
@@ -644,7 +639,7 @@ class MLPatternRecognizer:
         if sig1 == sig2:
             return 1.0
         
-        # Jaccard similarity for error logs
+     
         words1 = set(re.findall(r'\w+', log1.lower()))
         words2 = set(re.findall(r'\w+', log2.lower()))
         
@@ -665,8 +660,7 @@ class MLPatternRecognizer:
         try:
             with self.db.get_connection() as conn:
                 cursor = conn.cursor()
-                
-                # Get historical fixes with good success rates
+              
                 cursor.execute("""
                     SELECT DISTINCT error_log, suggested_fix, fix_status, 
                            repo_name, owner, created_at
@@ -699,8 +693,7 @@ class MLPatternRecognizer:
                         "date": created.isoformat() if created else None,
                         "error_pattern": hist_error[:200] + "..." if len(hist_error) > 200 else hist_error
                     })
-            
-            # Sort by similarity and return top matches
+        
             similar_fixes.sort(key=lambda x: x["similarity_score"], reverse=True)
             return similar_fixes[:10]
             
@@ -716,7 +709,7 @@ class MLPatternRecognizer:
         
         error_signature = self.extract_error_signature(error_log)
         
-        # Find existing pattern or create new one
+        
         existing_pattern = None
         for pattern in self.learned_patterns:
             if pattern.error_signature == error_signature:
@@ -729,19 +722,19 @@ class MLPatternRecognizer:
             existing_pattern.last_updated = datetime.utcnow()
             
             if fix_status == "approved":
-                # Improve success rate with weighted average
+              
                 total_weight = existing_pattern.usage_count
                 existing_pattern.success_rate = (
                     (existing_pattern.success_rate * (total_weight - 1) + 1.0) / total_weight
                 )
-            else:  # rejected
+            else: 
                 total_weight = existing_pattern.usage_count
                 existing_pattern.success_rate = (
                     (existing_pattern.success_rate * (total_weight - 1) + 0.0) / total_weight
                 )
         
         elif fix_status == "approved":
-            # Create new pattern for approved fixes
+            
             new_pattern = FixPattern(
                 error_signature=error_signature,
                 fix_template=suggested_fix,
@@ -752,13 +745,13 @@ class MLPatternRecognizer:
             )
             self.learned_patterns.append(new_pattern)
         
-        # Persist the learned patterns
+     
         self.save_learned_patterns()
     
     def save_learned_patterns(self):
         """Save learned patterns to database for persistence."""
         try:
-            # Store as JSON in a simple table
+        
             patterns_data = []
             for pattern in self.learned_patterns:
                 patterns_data.append({
@@ -773,7 +766,7 @@ class MLPatternRecognizer:
             with self.db.get_connection() as conn:
                 cursor = conn.cursor()
                 
-                # Create table if not exists
+               
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS learned_patterns (
                         id SERIAL PRIMARY KEY,
@@ -782,7 +775,7 @@ class MLPatternRecognizer:
                     )
                 """)
                 
-                # Clear old data and insert new
+             
                 cursor.execute("DELETE FROM learned_patterns")
                 cursor.execute(
                     "INSERT INTO learned_patterns (patterns_data) VALUES (%s)",
@@ -842,7 +835,7 @@ class SuccessPredictor:
                           repo_context: str) -> Dict[str, Any]:
         """Predict the likelihood of a fix being successful."""
         try:
-            # Base factors for prediction
+           
             factors = {
                 "similarity_match": 0.0,
                 "repo_history": 0.0,
@@ -851,7 +844,7 @@ class SuccessPredictor:
                 "time_context": 0.0
             }
             
-            # Factor 1: Similarity to successful historical fixes
+         
             similar_fixes = self.pattern_recognizer.find_similar_fixes(
                 error_log, repo_context, min_similarity=0.2
             )
@@ -860,22 +853,22 @@ class SuccessPredictor:
                 avg_similarity = sum(fix["similarity_score"] for fix in similar_fixes[:5]) / min(5, len(similar_fixes))
                 factors["similarity_match"] = avg_similarity
             
-            # Factor 2: Repository's historical fix success rate
+            
             repo_success_rate = self._get_repo_success_rate(repo_context)
             factors["repo_history"] = repo_success_rate
             
-            # Factor 3: Fix complexity (simpler fixes tend to work better)
+           
             fix_complexity = self._assess_fix_complexity(suggested_fix)
-            factors["fix_complexity"] = 1.0 - fix_complexity  # Invert (simpler = better)
+            factors["fix_complexity"] = 1.0 - fix_complexity  
             
-            # Factor 4: Error type reliability
+      
             error_reliability = self._get_error_type_reliability(error_log)
             factors["error_type_reliability"] = error_reliability
             
-            # Factor 5: Time context (recent fixes might be more reliable)
-            factors["time_context"] = 0.8  # Base value, could be enhanced
+           
+            factors["time_context"] = 0.8 
             
-            # Weighted combination
+        
             weights = {
                 "similarity_match": 0.3,
                 "repo_history": 0.25,
@@ -889,11 +882,11 @@ class SuccessPredictor:
                 for factor in factors
             )
             
-            # Confidence based on data availability
+         
             confidence = min(1.0, (
                 (len(similar_fixes) / 10) * 0.4 +
                 (1.0 if repo_success_rate > 0 else 0.0) * 0.3 +
-                0.3  # Base confidence
+                0.3 
             ))
             
             return {
@@ -935,7 +928,7 @@ class SuccessPredictor:
             if result and result[1] > 0:
                 return result[0] / result[1]
             
-            return 0.5  # Default if no history
+            return 0.5  
             
         except Exception as e:
             logger.error(f"Error getting repo success rate: {e}")
@@ -954,7 +947,7 @@ class SuccessPredictor:
             "dependency_changes": len(re.findall(r'(install|upgrade|add.*dependency)', fix_text.lower())) / 3
         }
         
-        # Weighted complexity score
+       
         weights = {
             "multiline_changes": 0.3,
             "multiple_files": 0.2,
@@ -977,8 +970,7 @@ class SuccessPredictor:
         
         if not error_types:
             return 0.5
-        
-        # Reliability scores based on typical fix success rates for different error types
+      
         type_reliability = {
             "dependency_error": 0.8,      # Usually fixable
             "linting_error": 0.9,         # Very fixable
@@ -1005,7 +997,7 @@ class SuccessPredictor:
         if factors["similarity_match"] < 0.2:
             recommendations.append("🔍 No similar historical fixes found - proceed with caution")
         
-        if factors["fix_complexity"] < 0.5:  # Remember we inverted this
+        if factors["fix_complexity"] < 0.5: 
             recommendations.append("🔧 Complex fix detected - consider breaking into smaller changes")
         
         if factors["repo_history"] < 0.3:
@@ -1028,14 +1020,14 @@ class IntelligentFixGenerator:
                             base_fix: str = None) -> Dict[str, Any]:
         """Generate an enhanced fix recommendation with ML insights."""
         try:
-            # Find similar successful fixes
+           
             similar_fixes = self.pattern_recognizer.find_similar_fixes(
                 error_log, repo_context, min_similarity=0.3
             )
             
-            # Generate fix recommendation
+          
             if similar_fixes and similar_fixes[0]["similarity_score"] > 0.7:
-                # High similarity - adapt the historical fix
+               
                 recommended_fix = self._adapt_historical_fix(
                     similar_fixes[0]["historical_fix"], 
                     error_log, 
@@ -1043,15 +1035,15 @@ class IntelligentFixGenerator:
                 )
                 strategy = "adapted_from_similar"
             elif base_fix:
-                # Enhance the base fix with learned patterns
+               
                 recommended_fix = self._enhance_base_fix(base_fix, similar_fixes)
                 strategy = "enhanced_base"
             else:
-                # Generate new fix from patterns
+               
                 recommended_fix = self._generate_from_patterns(error_log, similar_fixes)
                 strategy = "pattern_based"
             
-            # Predict success probability
+          
             prediction = self.success_predictor.predict_fix_success(
                 error_log, recommended_fix, repo_context
             )
@@ -1078,15 +1070,15 @@ class IntelligentFixGenerator:
     def _adapt_historical_fix(self, historical_fix: str, current_error: str, 
                             repo_context: str) -> str:
         """Adapt a historical fix to the current context."""
-        # Basic adaptation - in a full ML system, this could be much more sophisticated
+      
         adapted_fix = historical_fix
         
-        # Extract repository-specific context
+     
         if "/" in repo_context:
             owner, repo = repo_context.split("/")
             adapted_fix = adapted_fix.replace("<repo>", repo).replace("<owner>", owner)
         
-        # Add context-aware note
+        
         adaptation_note = f"\n\n# Adapted from similar fix in repository context\n# Original success rate: High\n# Context: {repo_context}"
         
         return adapted_fix + adaptation_note
@@ -1111,10 +1103,10 @@ class IntelligentFixGenerator:
         if not similar_fixes:
             return "# No similar patterns found\n# Manual investigation recommended\n# Check error logs and repository documentation"
         
-        # Create a fix based on common patterns in similar fixes
+     
         pattern_fix = "# Generated from similar patterns:\n\n"
         
-        # Extract common commands/approaches from similar fixes
+        
         common_patterns = []
         for fix in similar_fixes[:3]:
             lines = fix["historical_fix"].split('\n')
@@ -1124,7 +1116,7 @@ class IntelligentFixGenerator:
         
         if common_patterns:
             pattern_fix += "# Common fix patterns identified:\n"
-            for pattern in set(common_patterns[:5]):  # Remove duplicates, limit to 5
+            for pattern in set(common_patterns[:5]): 
                 pattern_fix += f"# {pattern}\n"
         
         pattern_fix += "\n# Recommended action based on patterns:\n"

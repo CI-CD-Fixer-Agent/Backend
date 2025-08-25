@@ -4,7 +4,6 @@ from typing import Dict, Any, Optional
 import uuid
 from datetime import datetime
 
-# Portia SDK imports
 from portia import (
     Portia, 
     Plan, 
@@ -36,13 +35,13 @@ class CICDFixerPortiaAgent:
         self.github_service = GitHubService()
         self.gemini_agent = GeminiFixerAgent()
         
-        # Create Portia configuration
+       
         self.config = self._create_portia_config()
         
-        # Create tool registry
+     
         self.tool_registry = create_ci_cd_tool_registry()
         
-        # Initialize Portia instance
+       
         self.portia = Portia(
             config=self.config,
             tools=self.tool_registry
@@ -51,11 +50,11 @@ class CICDFixerPortiaAgent:
     def _create_portia_config(self) -> Config:
         """Create Portia configuration with Google Gemini."""
         
-        # Get Google API key from environment
+     
         google_api_key = os.getenv("GOOGLE_API_KEY")
         
         if google_api_key:
-            # If we have a Google API key, configure Google provider
+        
             try:
                 print("✅ Configured Portia with Google Gemini")
                 config = Config(
@@ -72,7 +71,7 @@ class CICDFixerPortiaAgent:
                 config.argument_clarifications_enabled = True
                 return config
         else:
-            # Fallback to default configuration 
+           
             print("⚠️  Warning: No GOOGLE_API_KEY found. Using default Portia configuration.")
             print("   Set GOOGLE_API_KEY environment variable for better AI analysis.")
             config = default_config()
@@ -102,11 +101,10 @@ class CICDFixerPortiaAgent:
         try:
             print(f"🚀 Starting Portia-powered CI/CD analysis for {owner}/{repo} run #{run_id}")
             
-            # First, let's try a simple direct analysis approach instead of complex Portia workflow
-            # This will help us identify the exact issue
+           
             
             try:
-                # Test the individual tools first
+             
                 workflow_data = self.github_service.get_workflow_run(owner, repo, run_id)
                 if not workflow_data:
                     return {
@@ -118,17 +116,16 @@ class CICDFixerPortiaAgent:
                 
                 print(f"✅ Successfully fetched workflow data for {owner}/{repo}#{run_id}")
                 
-                # Get workflow logs
+             
                 logs = self.github_service.get_workflow_logs(owner, repo, run_id)
                 if logs:
                     print(f"✅ Successfully fetched workflow logs ({len(logs)} characters)")
-                    
-                    # Use Gemini for analysis
+                  
                     analysis = await self.gemini_agent.analyze_workflow_failure(workflow_data, logs)
                     if analysis:
                         print(f"✅ Gemini analysis completed successfully")
                         
-                        # Store the results
+                      
                         failure_data = {
                             "owner": owner,
                             "repo": repo,
@@ -171,7 +168,7 @@ class CICDFixerPortiaAgent:
             except Exception as direct_error:
                 print(f"❌ Direct analysis failed: {direct_error}")
                 
-                # Fallback to simple Portia plan if direct analysis fails
+        
                 analysis_prompt = f"""
                 Analyze the failed CI/CD workflow for repository {owner}/{repo}, run ID {run_id}.
                 
@@ -181,7 +178,7 @@ class CICDFixerPortiaAgent:
                 print(f"📋 Falling back to simple Portia execution")
                 
                 try:
-                    # Use synchronous execution with proper error handling
+                   
                     plan_run = self.portia.run(analysis_prompt)
                     
                     if plan_run:
@@ -236,8 +233,7 @@ class CICDFixerPortiaAgent:
         
         try:
             print(f"🙋 Handling clarification {clarification_id} for plan run {plan_run_id}")
-            
-            # Resume plan execution with the human response
+         
             plan_run = self.portia.resume_plan_run(
                 plan_run_id, 
                 clarification_id, 
@@ -284,7 +280,7 @@ class CICDFixerPortiaAgent:
         try:
             print(f"✅ Applying approved fix for workflow run {workflow_run_id}")
             
-            # Create fix application prompt
+        
             fix_prompt = f"""
             Apply the approved CI/CD fix for workflow run with database ID {workflow_run_id}.
             
@@ -295,7 +291,7 @@ class CICDFixerPortiaAgent:
             Database ID: {workflow_run_id}
             """
             
-            # Execute the fix application plan
+        
             plan_run = self.portia.run(fix_prompt)
             
             print(f"📝 Fix application completed with state: {plan_run.state}")
@@ -360,8 +356,7 @@ class CICDFixerPortiaAgent:
         """
         
         try:
-            # This would typically query Portia's storage for pending clarifications
-            # For now, we'll return database-based pending approvals
+   
             runs = self.db.get_workflow_runs(limit=50)
             pending_runs = [run for run in runs if run['fix_status'] == 'suggested']
             
@@ -391,5 +386,4 @@ class CICDFixerPortiaAgent:
             }
 
 
-# Create a global instance for use in the FastAPI app
 ci_cd_agent = CICDFixerPortiaAgent()

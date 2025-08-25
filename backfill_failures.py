@@ -10,7 +10,6 @@ import requests
 from datetime import datetime
 from postgres_database import PostgreSQLCICDFixerDB
 
-# Add the backend directory to Python path
 backend_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, backend_dir)
 
@@ -35,7 +34,6 @@ def backfill_repository_failures(db: PostgreSQLCICDFixerDB, owner: str, repo: st
     """Backfill all missing workflow failures for a repository."""
     print(f"🔍 Checking failures for {owner}/{repo}...")
     
-    # Get all failed workflows from GitHub
     workflow_runs = get_workflow_failures(owner, repo)
     
     if not workflow_runs:
@@ -55,13 +53,11 @@ def backfill_repository_failures(db: PostgreSQLCICDFixerDB, owner: str, repo: st
         head_sha = run.get("head_sha", "")
         head_branch = run.get("head_branch", "main")
         
-        # Check if this failure already exists
         existing = db.get_workflow_run_by_run_id(repo, owner, run_id)
         if existing:
             print(f"⏭️  Run {run_id} already exists, skipping...")
             continue
         
-        # Prepare run data
         run_data = {
             'repo_name': repo,
             'owner': owner,
@@ -72,7 +68,6 @@ def backfill_repository_failures(db: PostgreSQLCICDFixerDB, owner: str, repo: st
             'error_log': f"Workflow failed with conclusion: {conclusion}"
         }
         
-        # Add the failure to database
         try:
             result = db.insert_workflow_run(run_data)
             if result and result != -1:
@@ -89,7 +84,6 @@ def main():
     """Main backfill function."""
     print("🚀 Starting workflow failures backfill...")
     
-    # Initialize database
     db = PostgreSQLCICDFixerDB()
     
     if not db.is_available():
@@ -97,10 +91,8 @@ def main():
         return
     
     try:
-        # Repositories that have webhooks enabled
         repositories = [
             ("chaitanyak175", "ci-cd-test-repo"),
-            # Add more repositories here as they enable webhooks
         ]
         
         total_added = 0
@@ -113,11 +105,9 @@ def main():
         
         print(f"🎉 Backfill complete! Added {total_added} total failures")
         
-        # Show current database stats
         all_failures = db.get_workflow_runs()
         print(f"📈 Database now contains {len(all_failures)} total failures")
         
-        # Show breakdown by repository
         repo_counts = {}
         for failure in all_failures:
             repo_key = f"{failure.get('owner', 'unknown')}/{failure.get('repo_name', 'unknown')}"

@@ -14,12 +14,12 @@ class PostgreSQLCICDFixerDB:
             database_url = os.getenv('DATABASE_URL')
         
         if database_url:
-            # Fix the database URL for cloud deployment compatibility
+ 
             self.database_url = self.fix_database_url(database_url)
         else:
             self.database_url = None
             
-        # Graceful initialization with fallback
+     
         try:
             if self.database_url:
                 self.init_database()
@@ -33,17 +33,16 @@ class PostgreSQLCICDFixerDB:
     def fix_database_url(self, url: str) -> str:
         """Fix common issues with cloud PostgreSQL URLs for Render deployment"""
         try:
-            # Parse the URL
+     
             parsed = urlparse(url)
             
-            # Reconstruct without problematic query parameters
+
             fixed_url = f"postgresql://{parsed.username}:{parsed.password}@{parsed.hostname}:{parsed.port or 5432}{parsed.path}"
-            
-            # Add SSL requirement for cloud deployment
+      
             if 'sslmode' not in url.lower():
                 fixed_url += "?sslmode=require"
             elif 'sslmode' in url.lower():
-                # Keep existing SSL mode
+               
                 query_params = []
                 if parsed.query:
                     for param in parsed.query.split('&'):
@@ -52,7 +51,7 @@ class PostgreSQLCICDFixerDB:
                             if key.lower() == 'sslmode':
                                 query_params.append(f"sslmode={value}")
                         else:
-                            # Handle malformed parameters
+                           
                             continue
                 if query_params:
                     fixed_url += "?" + "&".join(query_params)
@@ -84,14 +83,13 @@ class PostgreSQLCICDFixerDB:
     def init_database(self):
         """Initialize the PostgreSQL database with required tables."""
         try:
-            # Test connection first
+         
             if not self.test_connection():
                 raise Exception("Cannot connect to database")
                 
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                
-                # Create workflow_runs table
+             
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS workflow_runs (
                         id SERIAL PRIMARY KEY,
@@ -113,7 +111,7 @@ class PostgreSQLCICDFixerDB:
                     )
                 """)
                 
-                # Add missing columns if they don't exist (for existing databases)
+             
                 try:
                     cursor.execute("""
                         ALTER TABLE workflow_runs 
@@ -123,10 +121,10 @@ class PostgreSQLCICDFixerDB:
                         ADD COLUMN IF NOT EXISTS analysis_result TEXT
                     """)
                 except Exception as e:
-                    # Column might already exist, ignore the error
+                  
                     pass
             
-            # Create portia_plans table for tracking agent execution
+          
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS portia_plans (
                     id SERIAL PRIMARY KEY,
@@ -142,7 +140,7 @@ class PostgreSQLCICDFixerDB:
                 )
             """)
             
-            # Create clarifications table for human approvals
+         
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS clarifications (
                     id SERIAL PRIMARY KEY,
@@ -295,7 +293,7 @@ class PostgreSQLCICDFixerDB:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Create or update the application result
+         
             cursor.execute("""
                 UPDATE workflow_runs 
                 SET 
@@ -315,7 +313,7 @@ class PostgreSQLCICDFixerDB:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 
-                # Add columns for tracking fix application
+               
                 cursor.execute("""
                     ALTER TABLE workflow_runs 
                     ADD COLUMN IF NOT EXISTS pr_url TEXT,
@@ -335,7 +333,7 @@ class PostgreSQLCICDFixerDB:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 
-                # Update the workflow run with additional metadata
+              
                 cursor.execute("""
                     UPDATE workflow_runs 
                     SET 
@@ -383,7 +381,7 @@ class PostgreSQLCICDFixerDB:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Build dynamic UPDATE query
+           
             set_clauses = []
             values = []
             
@@ -466,11 +464,11 @@ class PostgreSQLCICDFixerDB:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Total runs
+          
             cursor.execute("SELECT COUNT(*) FROM workflow_runs")
             total_runs = cursor.fetchone()[0]
             
-            # Runs by status
+          
             cursor.execute("""
                 SELECT fix_status, COUNT(*) 
                 FROM workflow_runs 
@@ -478,7 +476,7 @@ class PostgreSQLCICDFixerDB:
             """)
             status_counts = dict(cursor.fetchall())
             
-            # Recent runs (last 24 hours)
+           
             cursor.execute("""
                 SELECT COUNT(*) FROM workflow_runs 
                 WHERE created_at > NOW() - INTERVAL '24 hours'

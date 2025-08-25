@@ -15,11 +15,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import Literal
 
-# Load environment variables
+
 from dotenv import load_dotenv
 load_dotenv()
 
-# Local imports
+
 from postgres_database import PostgreSQLCICDFixerDB
 from github_service import GitHubService
 from gemini_agent import GeminiFixerAgent
@@ -32,7 +32,7 @@ from analytics_engine import (
     IntelligentFixGenerator
 )
 
-# Pydantic Models for API Documentation
+
 class AnalysisRequest(BaseModel):
     """Request model for workflow analysis"""
     owner: str = Field(..., description="GitHub repository owner/organization", example="microsoft")
@@ -100,7 +100,7 @@ class PortiaAnalysisResponse(BaseModel):
     run_id: int = Field(..., description="Workflow run ID", example=17152193292)
     result: Dict[str, Any] = Field(..., description="Detailed analysis results")
 
-# Configure logging
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -110,7 +110,7 @@ if not GOOGLE_API_KEY:
     logger.warning("⚠️  GOOGLE_API_KEY not set. Portia endpoint will be limited.")
     logger.warning("📝 To use full Portia functionality, set: export GOOGLE_API_KEY='your-api-key'")
 
-# Initialize FastAPI app with comprehensive metadata
+
 app = FastAPI(
     title="CI/CD Fixer Agent API",
     description="""
@@ -166,7 +166,7 @@ app = FastAPI(
 raw_origins = os.getenv("FRONTEND_URL", "")
 origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
 
-# CORS configuration
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -175,7 +175,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Utility functions
+
 def format_suggested_fix(fix_dict: Dict[str, Any]) -> str:
     """Format a suggested fix dictionary into a readable string."""
     if not isinstance(fix_dict, dict):
@@ -183,38 +183,36 @@ def format_suggested_fix(fix_dict: Dict[str, Any]) -> str:
     
     formatted = ""
     
-    # Add description
+
     if "description" in fix_dict:
         formatted += f"**Description:** {fix_dict['description']}\n\n"
-    
-    # Add steps
+
     if "steps" in fix_dict and isinstance(fix_dict["steps"], list):
         formatted += "**Steps:**\n"
         for i, step in enumerate(fix_dict["steps"], 1):
             formatted += f"{i}. {step}\n"
         formatted += "\n"
     
-    # Add files to modify
+
     if "files_to_modify" in fix_dict and isinstance(fix_dict["files_to_modify"], list) and fix_dict["files_to_modify"]:
         formatted += "**Files to modify:**\n"
         for file in fix_dict["files_to_modify"]:
             formatted += f"- {file}\n"
         formatted += "\n"
     
-    # Add commands to run
+
     if "commands_to_run" in fix_dict and isinstance(fix_dict["commands_to_run"], list) and fix_dict["commands_to_run"]:
         formatted += "**Commands to run:**\n"
         for cmd in fix_dict["commands_to_run"]:
             formatted += f"- `{cmd}`\n"
         formatted += "\n"
-    
-    # If no formatting was applied, return string representation
+
     if not formatted:
         formatted = str(fix_dict)
     
     return formatted.strip()
 
-# Initialize services
+
 try:
     db = PostgreSQLCICDFixerDB()
     github_service = GitHubService()
@@ -222,14 +220,14 @@ try:
     pattern_analyzer = CICDPatternAnalyzer()
     repo_learning = RepositoryLearningSystem()
     
-    # Add missing columns for fix application tracking
+ 
     db.add_missing_columns_if_needed()
     
     logger.info("✅ All services initialized successfully")
 except Exception as e:
     logger.error(f"❌ Failed to initialize services: {e}")
 
-# Database dependency
+
 def get_db():
     return db
 
@@ -245,7 +243,6 @@ def get_pattern_analyzer():
 def get_repo_learning():
     return repo_learning
 
-# Pydantic models
 class WebhookPayload(BaseModel):
     repository: Dict[str, Any]
     workflow_run: Dict[str, Any]
@@ -258,7 +255,7 @@ class AnalysisRequest(BaseModel):
 
 class FixRequest(BaseModel):
     fix_id: str
-    action: str  # "approve" or "reject"
+    action: str 
 
 class PlanClarificationRequest(BaseModel):
     plan_run_id: str
@@ -307,18 +304,18 @@ async def root():
 @app.post("/")
 async def root_post(request: Request):
     """Handle POST requests to root (likely misrouted GitHub webhooks)."""
-    # Log this for debugging
+   
     logger.info(f"POST request to root endpoint from {request.client.host if request.client else 'unknown'}")
     
-    # Check if this looks like a GitHub webhook
+   
     user_agent = request.headers.get("user-agent", "")
     content_type = request.headers.get("content-type", "")
     
     if "github" in user_agent.lower() or "hookshot" in user_agent.lower():
         logger.info("Detected potential GitHub webhook sent to wrong endpoint - redirecting to /webhook")
-        # Redirect to the webhook endpoint
+       
         return JSONResponse(
-            status_code=307,  # Temporary redirect that preserves POST method
+            status_code=307,  
             headers={"Location": "/webhook"},
             content={"message": "GitHub webhook detected - please use /webhook endpoint"}
         )
@@ -376,13 +373,13 @@ async def health_check() -> HealthResponse:
     - Google Gemini AI service availability
     """
     try:
-        # Check database connection
+       
         db_status = "connected" if db.test_connection() else "disconnected"
         
-        # Check GitHub API
+     
         github_status = "available" if github_service else "unavailable"
         
-        # Check Gemini API
+       
         gemini_status = "available" if gemini_agent else "unavailable"
         
         return HealthResponse(
@@ -409,13 +406,13 @@ async def health_check() -> HealthResponse:
 async def test_webhook():
     """Test webhook connectivity and configuration."""
     try:
-        # Test database connection
+     
         db_status = "connected" if db.test_connection() else "disconnected"
         
-        # Test GitHub service availability
+      
         github_status = "available" if github_service else "unavailable"
         
-        # Test Gemini AI service
+     
         gemini_status = "available" if gemini_agent else "unavailable"
         
         return {
@@ -450,7 +447,7 @@ async def test_webhook():
 async def handle_webhook(request: Request):
     """Handle GitHub webhook for workflow_run events."""
     try:
-        # Verify webhook signature
+      
         signature = request.headers.get("X-Hub-Signature-256")
         body = await request.body()
         
@@ -464,15 +461,14 @@ async def handle_webhook(request: Request):
             
             if not hmac.compare_digest(signature, expected_signature):
                 raise HTTPException(status_code=403, detail="Invalid webhook signature")
-        
-        # Parse payload with error handling
+       
         try:
             payload = json.loads(body)
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in webhook payload: {e}")
             raise HTTPException(status_code=400, detail="Invalid JSON payload")
         
-        # Validate required fields exist
+       
         if "action" not in payload:
             logger.warning("Missing 'action' field in webhook payload")
             return {"message": "Webhook received but missing required fields"}
@@ -481,17 +477,17 @@ async def handle_webhook(request: Request):
             logger.warning("Missing 'repository' field in webhook payload")
             return {"message": "Webhook received but missing repository data"}
         
-        # Handle both workflow_run and workflow_job events
+      
         workflow_data = None
         event_type = request.headers.get("X-GitHub-Event")
         
         if event_type == "workflow_run" and "workflow_run" in payload:
             workflow_data = payload["workflow_run"]
         elif event_type == "workflow_job" and "workflow_job" in payload:
-            # Convert workflow_job to workflow_run format for consistency
+          
             job_data = payload["workflow_job"]
             workflow_data = {
-                "id": job_data.get("run_id"),  # Use run_id instead of job id
+                "id": job_data.get("run_id"),  
                 "name": job_data.get("workflow_name", "Unknown"),
                 "conclusion": job_data.get("conclusion"),
                 "html_url": job_data.get("run_url", job_data.get("html_url")),
@@ -502,14 +498,14 @@ async def handle_webhook(request: Request):
             logger.warning(f"Unsupported event type: {event_type} or missing workflow data")
             return {"message": f"Webhook received but unsupported event type: {event_type}"}
         
-        # Only process failed workflow runs/jobs
+      
         if (payload.get("action") == "completed" and 
             workflow_data and workflow_data.get("conclusion") == "failure"):
             
             try:
                 repository = payload["repository"]
                 
-                # Extract required data with fallbacks
+             
                 owner = repository.get("owner", {}).get("login")
                 repo = repository.get("name")
                 run_id = workflow_data.get("id")
@@ -520,7 +516,7 @@ async def handle_webhook(request: Request):
                 
                 logger.info(f"🔥 Detected failed workflow: {owner}/{repo} run #{run_id} (event: {event_type})")
                 
-                # Store failure in database with safe field access
+              
                 failure_data = {
                     "owner": owner,
                     "repo": repo,
@@ -535,7 +531,7 @@ async def handle_webhook(request: Request):
                 failure_id = db.store_failure(failure_data)
                 logger.info(f"📝 Stored failure with ID: {failure_id}")
                 
-                # Trigger analysis asynchronously
+                
                 asyncio.create_task(analyze_failure_async(owner, repo, run_id, failure_id))
                 
                 return {"message": "Webhook processed successfully", "failure_id": failure_id}
@@ -557,7 +553,7 @@ async def analyze_failure_async(owner: str, repo: str, run_id: int, failure_id: 
     try:
         logger.info(f"🔍 Starting analysis for {owner}/{repo} run #{run_id}")
         
-        # Perform analysis using Gemini
+     
         try:
             analysis_result = await gemini_agent.analyze_failure(owner, repo, run_id)
             logger.info(f"🤖 Analysis completed for {owner}/{repo}#{run_id}")
@@ -567,28 +563,28 @@ async def analyze_failure_async(owner: str, repo: str, run_id: int, failure_id: 
         
         if analysis_result:
             try:
-                # Store analysis results
+               
                 db.store_analysis(failure_id, analysis_result)
                 logger.info(f"💾 Analysis result stored for failure {failure_id}")
                 
-                # Check if a fix was suggested and store it properly
+             
                 suggested_fix = analysis_result.get("suggested_fix")
                 if suggested_fix:
-                    # Convert suggested_fix to string if it's a dictionary
+                  
                     if isinstance(suggested_fix, dict):
                         fix_description = suggested_fix.get("description", str(suggested_fix))
                         logger.info(f"💡 Fix suggested for {owner}/{repo}#{run_id}: {fix_description[:100]}...")
-                        # Convert the entire fix object to a formatted string
+                       
                         fix_string = format_suggested_fix(suggested_fix)
                     else:
                         fix_string = str(suggested_fix)
                         logger.info(f"💡 Fix suggested for {owner}/{repo}#{run_id}: {fix_string[:100]}...")
                     
-                    # Update the workflow run with the suggested fix
+                 
                     db.update_workflow_run_fix(
-                        run_id=int(failure_id),  # failure_id is the database record ID
+                        run_id=int(failure_id), 
                         suggested_fix=fix_string,
-                        fix_status='pending'  # Set to pending to require human approval
+                        fix_status='pending' 
                     )
                     logger.info(f"✅ Fix stored for failure {failure_id}")
                 else:
@@ -600,7 +596,7 @@ async def analyze_failure_async(owner: str, repo: str, run_id: int, failure_id: 
             
     except Exception as e:
         logger.error(f"❌ Analysis error for {owner}/{repo} run #{run_id}: {e}")
-        # Store error information
+    
         try:
             error_result = {
                 "error": str(e),
@@ -661,7 +657,7 @@ async def trigger_analysis(request: AnalysisRequest) -> AnalysisResponse:
     try:
         logger.info(f"🔍 Manual analysis triggered for {request.owner}/{request.repo} run #{request.run_id}")
         
-        # Store failure if not already stored
+      
         failure_data = {
             "owner": request.owner,
             "repo": request.repo,
@@ -674,8 +670,7 @@ async def trigger_analysis(request: AnalysisRequest) -> AnalysisResponse:
         }
         
         failure_id = db.store_failure(failure_data)
-        
-        # Trigger analysis asynchronously
+       
         asyncio.create_task(analyze_failure_async(request.owner, request.repo, request.run_id, failure_id))
         
         return AnalysisResponse(
@@ -706,7 +701,7 @@ async def analyze_with_portia(request: AnalysisRequest):
         
         logger.info(f"🤖 Portia analysis triggered for {request.owner}/{request.repo} run #{request.run_id}")
         
-        # Run Portia analysis
+   
         result = await ci_cd_agent.analyze_ci_failure(request.owner, request.repo, request.run_id)
         
         return {
@@ -817,17 +812,17 @@ async def approve_fix(fix_id: str):
         if fix["fix_status"] != "pending":
             raise HTTPException(status_code=400, detail="Fix is not in pending state")
         
-        # Update fix status to approved
+      
         db.update_fix_status(fix_id, "approved")
         logger.info(f"✅ Fix {fix_id} approved")
         
-        # Apply the fix to the repository
+       
         try:
             await apply_fix_to_repository(fix_id, fix)
             return {"message": "Fix approved and application started", "fix_id": fix_id}
         except Exception as e:
             logger.error(f"❌ Failed to apply fix {fix_id}: {e}")
-            # Update status to show application failed
+           
             db.update_fix_application_result(
                 fix_id, "approved_application_failed", 
                 error_message=str(e)
@@ -850,16 +845,16 @@ async def apply_fix_to_repository(fix_id: str, fix: Dict[str, Any]):
         
         logger.info(f"🚀 Applying fix {fix_id} to {owner}/{repo}")
         
-        # Update status to indicate application is in progress
+      
         db.update_fix_status(fix_id, "applying")
         
-        # Apply fix using GitHub service
+       
         application_result = github_service.apply_fix_to_repository(
             owner, repo, suggested_fix, fix_id
         )
         
         if application_result:
-            # Successfully created PR
+          
             pr_url = application_result.get("pull_request", {}).get("html_url")
             branch_name = application_result.get("branch_name")
             
@@ -869,11 +864,10 @@ async def apply_fix_to_repository(fix_id: str, fix: Dict[str, Any]):
             
             logger.info(f"✅ Fix {fix_id} applied successfully. PR: {pr_url}")
             
-            # Optionally, you could add auto-merge logic here for low-risk fixes
-            # await auto_merge_if_safe(owner, repo, pr_url, fix)
+          
             
         else:
-            # Application failed
+           
             db.update_fix_application_result(
                 fix_id, "application_failed", 
                 error_message="Failed to create PR or apply changes"
@@ -900,7 +894,7 @@ async def auto_merge_if_safe(owner: str, repo: str, pr_url: str, fix: Dict[str, 
         confidence_score = fix.get("confidence_score", 0)
         fix_complexity = fix.get("fix_complexity", "high")
         
-        # Only auto-merge if confidence is high and complexity is low
+      
         if confidence_score > 0.8 and fix_complexity == "low":
             logger.info(f"🤖 Fix meets criteria for auto-merge: confidence={confidence_score}, complexity={fix_complexity}")
             # TODO: Implement auto-merge logic
@@ -922,7 +916,7 @@ async def reject_fix(fix_id: str):
         if fix["fix_status"] != "pending":
             raise HTTPException(status_code=400, detail="Fix is not in pending state")
         
-        # Update fix status
+       
         db.update_fix_status(fix_id, "rejected")
         
         logger.info(f"❌ Fix {fix_id} rejected")
@@ -970,7 +964,7 @@ async def manually_apply_fix(fix_id: str):
         if fix["fix_status"] not in ["approved", "application_failed"]:
             raise HTTPException(status_code=400, detail="Fix must be approved before application")
         
-        # Apply the fix
+     
         await apply_fix_to_repository(fix_id, fix)
         
         return {"message": "Fix application triggered", "fix_id": fix_id}
@@ -989,8 +983,7 @@ async def respond_to_clarification(
 ):
     """Respond to a Portia plan clarification."""
     try:
-        # TODO: Implement clarification response
-        # This would involve interacting with the Portia plan run
+     
         logger.info(f"📝 Clarification response for plan {plan_run_id}, clarification {clarification_id}")
         
         return {
@@ -1004,7 +997,6 @@ async def respond_to_clarification(
         logger.error(f"Failed to respond to clarification: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# Analytics Endpoints - Advanced Analytics & Learning
 
 @app.get("/analytics/patterns")
 async def get_failure_patterns(days_back: int = 30):
@@ -1068,11 +1060,11 @@ async def get_analytics_dashboard():
         
         analyzer = get_pattern_analyzer()
         
-        # Get key metrics
-        patterns = analyzer.analyze_failure_patterns(days_back=7)  # Last week
+       
+        patterns = analyzer.analyze_failure_patterns(days_back=7) 
         effectiveness = analyzer.get_fix_effectiveness_stats()
         
-        # Combine into dashboard
+        
         dashboard = {
             "overview": {
                 "generated_at": datetime.utcnow().isoformat(),
@@ -1098,7 +1090,6 @@ async def get_analytics_dashboard():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Advanced Analytics Endpoints
 @app.post("/analytics/ml/similar-fixes")
 async def find_similar_fixes(request: dict):
     """Find similar fixes using ML-based pattern recognition."""
@@ -1161,7 +1152,7 @@ async def generate_enhanced_fix(request: dict):
     try:
         error_log = request.get("error_log", "")
         repo_context = request.get("repo_context", "")
-        base_fix = request.get("base_fix")  # Optional
+        base_fix = request.get("base_fix") 
         
         if not error_log:
             raise HTTPException(status_code=400, detail="error_log is required")
@@ -1285,15 +1276,15 @@ async def get_model_performance():
     try:
         logger.info("📊 Analyzing ML model performance")
         
-        # Initialize components
+      
         recognizer = MLPatternRecognizer()
         predictor = SuccessPredictor()
         
-        # Get some basic performance metrics
+        
         with PostgreSQLCICDFixerDB().get_connection() as conn:
             cursor = conn.cursor()
             
-            # Get recent predictions vs actual outcomes
+            
             cursor.execute("""
                 SELECT COUNT(*) as total_fixes,
                        COUNT(CASE WHEN fix_status = 'approved' THEN 1 END) as approved_fixes,
