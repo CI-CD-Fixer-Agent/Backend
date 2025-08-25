@@ -1,8 +1,8 @@
 # 🤖 CI/CD Fixer Agent API Documentation
 
 **Version**: 2.0.0  
-**Generated**: August 23, 2025  
-**Status**: 🚀 **LIVE IN PRODUCTION** - 29 failures processed, 20+ repositories analyzed
+**Generated**: August 25, 2025  
+**Status**: 🚀 **LIVE IN PRODUCTION** - 17 failures processed, 1 repository analyzed
 
     🤖 **Intelligent CI/CD Failure Analysis & Fixing Platform**
 
@@ -15,20 +15,20 @@
     * **GitHub Integration**: Real-time webhook processing and API integration (tested with real data)
     * **PostgreSQL Database**: Complete audit trails and analytics storage (Supabase cloud)
     * **ML Analytics**: Pattern recognition, success prediction, and learning (active)
-    * **Human Approval**: Safe fix application with approval workflows (3.45% approval rate)
+    * **Human Approval**: Safe fix application with approval workflows (41.18% approval rate)
 
     ## 🔧 **Core Capabilities**
 
-    * Analyze failed GitHub Actions workflows (29 failures processed)
+    * Analyze failed GitHub Actions workflows (17 failures processed)
     * Generate intelligent fix suggestions (100% generation rate)
     * Track fix effectiveness over time (comprehensive metrics)
-    * Learn from repository-specific patterns (20+ repositories)
+    * Learn from repository-specific patterns (chaitanyak175/ci-cd-test-repo)
     * Provide comprehensive analytics and insights (live dashboard)
 
     ## 📊 **Analytics & Learning**
 
-    * Pattern recognition across repositories (multi-language support)
-    * ML-based success prediction for fixes (confidence scoring)
+    * Pattern recognition across repositories (multi-language support: Python, JavaScript, Docker)
+    * ML-based success prediction for fixes (confidence scoring up to 82.38%)
     * Repository-specific intelligence (individual profiles)
     * Historical analysis and trend detection (real production data)
     * Enhanced fix generation with ML insights (context-aware)
@@ -44,7 +44,7 @@
 -   **🚀 Production**: `https://ci-cd-fixer-agent-backend.onrender.com` ✅ **LIVE & OPERATIONAL**
 -   **Development**: `http://localhost:8000`
 
-**📊 Production Status**: 29 failures processed | 20+ repositories | All services healthy
+**📊 Production Status**: 17 failures processed | 1 repository analyzed | All services healthy
 
 ---
 
@@ -511,6 +511,222 @@ Use this when you want to analyze a specific failed workflow run manually.
 **500** - Internal server error
 
 **422** - Validation Error
+
+---
+
+## 🧪 **TESTED ENDPOINTS WITH LIVE RESPONSES**
+
+_All endpoints tested on August 25, 2025 against the live production system._
+
+### 🔍 **System Health & Status**
+
+#### Health Check
+
+```bash
+GET /health
+```
+
+**Live Response:**
+
+```json
+{
+    "status": "healthy",
+    "timestamp": "2025-08-25T08:15:16.896858",
+    "services": {
+        "database": "connected",
+        "github_api": "available",
+        "gemini_api": "available"
+    }
+}
+```
+
+### 📊 **Failures & Analytics**
+
+#### Get All Failures
+
+```bash
+GET /failures
+```
+
+**Live Response:**
+
+```json
+{
+    "failures": [
+        {
+            "id": 95,
+            "repo_name": "ci-cd-test-repo",
+            "owner": "chaitanyak175",
+            "workflow_name": "🔴 Broken Python Advanced CI",
+            "run_id": 17199274412,
+            "status": "failed",
+            "conclusion": "failure",
+            "suggested_fix": "**Description:** Fix Docker build configuration...",
+            "fix_status": "pending",
+            "created_at": "2025-08-25T04:44:00.605028"
+        }
+    ],
+    "count": 17
+}
+```
+
+#### Analytics Dashboard
+
+```bash
+GET /analytics/dashboard
+```
+
+**Live Response:**
+
+```json
+{
+    "message": "Analytics dashboard generated",
+    "dashboard": {
+        "failure_patterns": {
+            "total_runs": 17,
+            "patterns": {
+                "most_failing_repos": {
+                    "chaitanyak175/ci-cd-test-repo": 17
+                },
+                "language_distribution": {
+                    "python": 4,
+                    "javascript": 4,
+                    "docker": 2
+                }
+            }
+        },
+        "fix_effectiveness": {
+            "overall_stats": {
+                "total_fixes": 17,
+                "approved_fixes": 7,
+                "approval_rate": 41.18,
+                "pending_rate": 58.82
+            }
+        }
+    }
+}
+```
+
+### 🤖 **Machine Learning Endpoints**
+
+#### Predict Fix Success
+
+```bash
+POST /analytics/ml/predict-success
+Content-Type: application/json
+
+{
+  "error_log": "npm install failed",
+  "suggested_fix": "use --legacy-peer-deps"
+}
+```
+
+**Live Response:**
+
+```json
+{
+    "message": "Fix success prediction completed",
+    "prediction": {
+        "predicted_success_rate": 0.8238,
+        "confidence": 0.76,
+        "factors": {
+            "similarity_match": 1.0,
+            "repo_history": 0.5,
+            "fix_complexity": 0.994,
+            "error_type_reliability": 0.8
+        },
+        "recommendations": [
+            "✅ High success probability - safe to apply automatically"
+        ],
+        "similar_fixes_found": 4
+    }
+}
+```
+
+#### ML Model Performance
+
+```bash
+GET /analytics/ml/model-performance
+```
+
+**Live Response:**
+
+```json
+{
+    "message": "ML model performance analysis completed",
+    "performance": {
+        "data_summary": {
+            "total_fixes_last_30_days": 17,
+            "approved_fixes": 4,
+            "approval_rate": 0.23529411764705882
+        },
+        "model_capabilities": {
+            "similarity_matching": "✅ Operational",
+            "success_prediction": "✅ Operational",
+            "pattern_learning": "✅ Operational",
+            "adaptive_improvement": "✅ Operational"
+        }
+    }
+}
+```
+
+### 🔧 **Fix Management**
+
+#### Get Pending Fixes
+
+```bash
+GET /fixes
+```
+
+**Live Response:**
+
+```json
+{
+    "pending_fixes": [
+        {
+            "id": 95,
+            "repo_name": "ci-cd-test-repo",
+            "owner": "chaitanyak175",
+            "workflow_name": "🔴 Broken Python Advanced CI",
+            "suggested_fix": "**Description:** Fix Docker build configuration...",
+            "fix_status": "pending",
+            "created_at": "2025-08-25T04:44:00.605028"
+        }
+    ]
+}
+```
+
+### 🌐 **All Available Endpoints**
+
+The production system includes 24 fully functional endpoints:
+
+```bash
+GET    /                                                    # API welcome
+GET    /health                                             # Health check
+GET    /ping                                               # Simple ping
+POST   /webhook                                            # GitHub webhooks
+POST   /webhook/test                                       # Test webhooks
+POST   /analyze                                            # Manual analysis
+POST   /analyze/portia                                     # Portia analysis
+GET    /failures                                           # All failures
+GET    /failures/{failure_id}                              # Specific failure
+GET    /fixes                                              # Pending fixes
+POST   /fixes/{fix_id}/approve                             # Approve fix
+POST   /fixes/{fix_id}/reject                              # Reject fix
+POST   /fixes/{fix_id}/apply                               # Apply fix
+GET    /fixes/{fix_id}/status                              # Fix status
+GET    /analytics/dashboard                                # Dashboard
+GET    /analytics/patterns                                 # Pattern analysis
+GET    /analytics/effectiveness                            # Fix effectiveness
+GET    /analytics/repository/{owner}/{repo}                # Repo analytics
+POST   /analytics/ml/predict-success                       # ML prediction
+GET    /analytics/ml/model-performance                     # ML performance
+POST   /analytics/ml/similar-fixes                         # Similar fixes
+POST   /analytics/ml/pattern-insights                      # Pattern insights
+POST   /analytics/ml/generate-enhanced-fix                 # Enhanced fixes
+POST   /analytics/ml/learn-from-feedback                   # Learn feedback
+GET    /plans/{plan_run_id}/clarifications/{clarification_id}  # Clarifications
+```
 
 ---
 

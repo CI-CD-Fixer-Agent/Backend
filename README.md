@@ -1,6 +1,6 @@
 # 🤖 CI/CD Fixer Agent Backend - Production System
 
-**🚀 Production Status**: **LIVE** | **29 Failures Processed** | **20+ Repositories Analyzed** | **100% AI Operational**
+**🚀 Production Status**: **LIVE** | **17 Failures Processed** | **1 Repository Analyzed** | **100% AI Operational**
 
 **Live Production URL**: https://ci-cd-fixer-agent-backend.onrender.com
 
@@ -8,14 +8,15 @@ A sophisticated CI/CD failure analysis and fixing system powered by **Google Gem
 
 ## 🌟 **Production Highlights**
 
-### **📊 Live System Metrics** (August 2025)
+### **📊 Live System Metrics** (August 25, 2025)
 
--   **🔥 29 Total Failures Processed** - All with AI-generated intelligent fixes
--   **🏢 20+ Repositories Analyzed** - Cross-language pattern recognition active
+-   **🔥 17 Total Failures Processed** - All with AI-generated intelligent fixes
+-   **🏢 1 Repository Analyzed** - chaitanyak175/ci-cd-test-repo with multiple language CI/CD pipelines
 -   **⚡ 100% Fix Generation Rate** - Every failure receives comprehensive AI analysis
--   **👥 Human-in-the-Loop Workflow** - 1 approved, 2 rejected, 26 pending review
+-   **👥 Human-in-the-Loop Workflow** - 4 approved, 3 applied, 10 pending review
 -   **🗄️ PostgreSQL Database** - Complete audit trail via Supabase
 -   **🌐 Production Deployment** - Live on Render with 100% uptime
+-   **📊 Analytics Engine** - 41.18% overall approval rate with ML pattern recognition
 
 ### **🎯 AI-Powered Intelligence**
 
@@ -54,15 +55,29 @@ Test the live production system immediately:
 ```bash
 # Health check - verify all services are operational
 curl https://ci-cd-fixer-agent-backend.onrender.com/health
+# Returns: {"status":"healthy","timestamp":"2025-08-25T08:15:16.896858","services":{"database":"connected","github_api":"available","gemini_api":"available"}}
 
-# Get all processed failures (29 current)
+# Get all processed failures (17 current as of Aug 25, 2025)
 curl https://ci-cd-fixer-agent-backend.onrender.com/failures
+# Returns: {"failures":[...],"count":17} with complete failure data including suggested fixes
 
-# Get pending fixes for review (26 current)
+# Get pending fixes for review (10 current)
 curl https://ci-cd-fixer-agent-backend.onrender.com/fixes
+# Returns: {"pending_fixes":[...]} with all fixes awaiting human approval
 
-# Get analytics and patterns
+# Get analytics dashboard with live metrics
+curl https://ci-cd-fixer-agent-backend.onrender.com/analytics/dashboard
+# Returns: Complete dashboard with failure patterns, success rates, and recommendations
+
+# Get pattern analysis across repositories
 curl https://ci-cd-fixer-agent-backend.onrender.com/analytics/patterns
+# Returns: Cross-repository pattern analysis with failure time distribution
+
+# Test ML success prediction
+curl -X POST https://ci-cd-fixer-agent-backend.onrender.com/analytics/ml/predict-success \
+  -H "Content-Type: application/json" \
+  -d '{"error_log":"npm install failed","suggested_fix":"use --legacy-peer-deps"}'
+# Returns: {"predicted_success_rate":0.8238,"confidence":0.76,"recommendations":[...]}
 ```
 
 ### **Local Development Setup**
@@ -105,7 +120,9 @@ curl https://ci-cd-fixer-agent-backend.onrender.com/analytics/patterns
 # System Health & Status
 GET  /                     # API information and welcome message
 GET  /health              # Comprehensive health check (database, GitHub, Gemini)
-POST /webhook/github      # GitHub webhook receiver for real-time failure detection
+GET  /ping                # Simple ping endpoint
+POST /webhook             # GitHub webhook receiver for real-time failure detection
+POST /webhook/test        # Test webhook endpoint
 
 # Manual Analysis & Testing
 POST /analyze             # Manual workflow analysis trigger
@@ -116,42 +133,42 @@ POST /analyze/portia      # Portia-powered multi-agent analysis
 
 ```bash
 # Failure Data & Analytics
-GET  /failures           # List all processed failures (29 current)
-GET  /failures/{id}      # Get detailed failure information
-GET  /failures/summary   # Failure statistics and overview
+GET  /failures                    # List all processed failures (17 current)
+GET  /failures/{failure_id}       # Get detailed failure information
 
 # Repository Intelligence
-GET  /repositories       # List analyzed repositories (20+ current)
-GET  /repositories/{owner}/{repo}/analytics  # Repository-specific insights
+GET  /analytics/repository/{owner}/{repo}  # Repository-specific insights
 ```
 
 ### **Fix Management & Human Oversight**
 
 ```bash
 # Fix Review & Approval
-GET  /fixes              # Get all pending fixes for review (26 current)
-GET  /fixes/{id}         # Get detailed fix information
-POST /fixes/{id}/approve # Approve fix with optional comment
-POST /fixes/{id}/reject  # Reject fix with reason
-POST /fixes/{id}/apply   # Apply approved fix to repository
+GET  /fixes                       # Get all pending fixes for review (10 current)
+POST /fixes/{fix_id}/approve      # Approve fix with optional comment
+POST /fixes/{fix_id}/reject       # Reject fix with reason
+POST /fixes/{fix_id}/apply        # Apply approved fix to repository
+GET  /fixes/{fix_id}/status       # Get fix status
 
 # Human-in-the-Loop Workflow
-GET  /clarifications     # Get pending approval requests
-POST /clarifications/respond  # Respond to approval requests
+GET  /plans/{plan_run_id}/clarifications/{clarification_id}  # Get clarification details
 ```
 
 ### **Analytics & Intelligence**
 
 ```bash
-# Pattern Recognition & ML Insights
-GET  /analytics/dashboard     # Dashboard summary statistics
-GET  /analytics/patterns      # Cross-repository pattern analysis
-GET  /analytics/effectiveness # Fix effectiveness and success rates
-GET  /analytics/repository/{owner}/{repo}  # Repository-specific analytics
+# Core Analytics
+GET  /analytics/dashboard          # Dashboard summary statistics
+GET  /analytics/patterns           # Cross-repository pattern analysis
+GET  /analytics/effectiveness      # Fix effectiveness and success rates
 
-# Performance Metrics
-GET  /stats              # System performance statistics
-GET  /stats/agent        # AI agent performance metrics
+# Machine Learning & AI
+POST /analytics/ml/predict-success       # Predict fix success probability
+GET  /analytics/ml/model-performance     # ML model performance metrics
+POST /analytics/ml/similar-fixes        # Find similar fixes in history
+POST /analytics/ml/pattern-insights     # Get ML pattern insights
+POST /analytics/ml/generate-enhanced-fix # Generate enhanced AI fixes
+POST /analytics/ml/learn-from-feedback   # Learn from human feedback
 ```
 
 ## ⚙️ **Configuration**
