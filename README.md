@@ -2,7 +2,9 @@
 
 **🚀 Production Status**: **LIVE** | **17 Failures Processed** | **1 Repository Analyzed** | **100% AI Operational**
 
-**Live Production URL**: https://ci-cd-fixer-agent-backend.onrender.com
+**Live Production URLs**: 
+- **Backend API**: https://ci-cd-fixer-agent-backend.onrender.com
+- **Frontend Dashboard**: https://frontend-3dvq.onrender.com/
 
 A sophisticated CI/CD failure analysis and fixing system powered by **Google Gemini 2.5 Pro** and **Portia AI** that automatically detects, analyzes, and suggests intelligent fixes for GitHub Actions workflow failures with human oversight.
 
