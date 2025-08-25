@@ -274,7 +274,8 @@ async def root():
         "description": "Automated CI/CD failure analysis and fixing using Portia AI + Google Gemini",
         "endpoints": {
             "health": "/health",
-            "webhook": "/webhook", 
+            "webhook": "/webhook",
+            "webhook_test": "/webhook/test",
             "analyze": "/analyze",
             "analyze_portia": "/analyze/portia",
             "fixes": "/fixes",
@@ -401,6 +402,47 @@ async def health_check() -> HealthResponse:
                 "status": "unhealthy",
                 "timestamp": datetime.utcnow().isoformat(),
                 "error": str(e)
+            }
+        )
+
+@app.post("/webhook/test")
+async def test_webhook():
+    """Test webhook connectivity and configuration."""
+    try:
+        # Test database connection
+        db_status = "connected" if db.test_connection() else "disconnected"
+        
+        # Test GitHub service availability
+        github_status = "available" if github_service else "unavailable"
+        
+        # Test Gemini AI service
+        gemini_status = "available" if gemini_agent else "unavailable"
+        
+        return {
+            "message": "Webhook test completed successfully",
+            "status": "healthy",
+            "services": {
+                "database": db_status,
+                "github_api": github_status,
+                "gemini_api": gemini_status,
+                "webhook_endpoint": "available"
+            },
+            "timestamp": datetime.utcnow().isoformat(),
+            "test_payload": {
+                "event_type": "test",
+                "source": "webhook_test_endpoint",
+                "description": "This is a test webhook to verify connectivity"
+            }
+        }
+    except Exception as e:
+        logger.error(f"Webhook test failed: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "message": "Webhook test failed",
+                "status": "error",
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
             }
         )
 
